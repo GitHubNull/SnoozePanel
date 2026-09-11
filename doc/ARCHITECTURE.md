@@ -100,7 +100,7 @@
 
 ## 决策 8：目录纪律 = 工程文件在项目根，tmp/ 仅放临时文件
 
-**结论**：`package.json` / `pnpm-lock.yaml` / `vite.config.ts` / `vitest.config.ts` / `tsconfig.json` / `node_modules/` 全部位于**项目根**，遵循常规 Node 项目结构；`tmp/` 只承载临时文件（构建产物 `tmp/dist/`、mock 页 `tmp/dev/`、缓存、验证截图、敏感信息），整体被 `.gitignore` 排除；`src/` 仅 `.ts`/`.vue` 源码。
+**结论**：`package.json` / `pnpm-lock.yaml` / `vite.config.ts` / `vitest.config.ts` / `tsconfig.json` / `node_modules/` 全部位于**项目根**，遵循常规 Node 项目结构；`dev/` 承载 mock 实测页（**必须入库**，供他人测试/核对/验证）；`tmp/` 只承载可丢弃的临时文件（构建产物 `tmp/dist/`、验证截图、一次性辅助脚本、垃圾/测试数据、敏感信息），整体被 `.gitignore` 排除；`src/` 仅 `.ts`/`.vue` 源码。
 
 **理由**：
 - 工程文件放项目根是 Node 生态的通用约定：任何开发者、AI 代理或 CI 打开仓库即懂，无需额外心智负担。

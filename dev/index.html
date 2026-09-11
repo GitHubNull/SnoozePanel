@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SnoozePanel 本地实测</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #1a1d24; color: #eee; }
+    .panel { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 20px; }
+    .card { background: #242833; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; }
+    button { background: #5ea0ff; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px; font-size: 14px; cursor: pointer; margin-right: 8px; margin-bottom: 8px; }
+    button.ghost { background: #3a4152; }
+    label { display: block; margin: 10px 0 4px; font-size: 13px; opacity: 0.8; }
+    select, input { padding: 6px 8px; border-radius: 6px; border: 1px solid #444; background: #2c3140; color: #eee; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .row > div { flex: 1; min-width: 160px; }
+    code { background: #000; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    #log { font-family: monospace; font-size: 12px; background: #10131a; padding: 10px; border-radius: 6px; max-height: 160px; overflow: auto; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>SnoozePanel 本地实测（mock hass）</h1>
+
+    <div class="card">
+      <label>主题</label>
+      <select id="theme">
+        <option value="midnight">深夜（深色）</option>
+        <option value="paper">宣纸（浅色）</option>
+      </select>
+      <label>时钟样式</label>
+      <select id="clockStyle">
+        <option value="digital">数字时钟</option>
+        <option value="analog">模拟表盘</option>
+      </select>
+      <label>背景类型</label>
+      <select id="bgType">
+        <option value="color">纯色</option>
+        <option value="gradient">渐变</option>
+      </select>
+      <div style="margin-top:12px">
+        <button id="activate">立即触发屏保</button>
+        <button id="editor" class="ghost">打开配置编辑器</button>
+      </div>
+      <p style="font-size:12px;opacity:0.7">屏保激活后，点击/触摸任意处或按任意键退出（含 2 秒冷却）。</p>
+    </div>
+
+    <div class="card">
+      <label>运行日志</label>
+      <div id="log"></div>
+    </div>
+
+    <div class="card" style="background:#fff;color:#222" id="editor-card" hidden>
+      <label style="color:#222">配置编辑器（PrimeVue 中文界面）</label>
+      <div id="editor-host"></div>
+    </div>
+  </div>
+
+  <!-- 屏保挂载点由插件动态创建，无需占位 -->
+
+  <script type="module">
+    // ---- mock hass ----
+    const mockHass = {
+      states: {
+        'weather.home': { entity_id: 'weather.home', state: 'sunny', attributes: { temperature: 26, humidity: 45 }, last_changed: '', last_updated: '' },
+        'sensor.temp': { entity_id: 'sensor.temp', state: '23.5', attributes: {}, last_changed: '', last_updated: '' },
+        'binary_sensor.someone_home': { entity_id: 'binary_sensor.someone_home', state: 'on', attributes: {}, last_changed: '', last_updated: '' },
+        'sun.sun': { entity_id: 'sun.sun', state: 'above_horizon', attributes: { next_rising: '2026-09-12T06:00:00+08:00', next_setting: '2026-09-11T18:30:00+08:00' }, last_changed: '', last_updated: '' },
+        'input_boolean.screensaver': { entity_id: 'input_boolean.screensaver', state: 'off', attributes: {}, last_changed: '', last_updated: '' },
+      },
+      user: { name: 'admin', is_admin: true },
+      callService: async (domain, service, data) => {
+        log(`callService ${domain}.${service} ${JSON.stringify(data)}`);
+        const id = data?.entity_id;
+        if (id && mockHass.states[id]) {
+          mockHass.states[id].state = service === 'turn_on' ? 'on' : 'off';
+        }
+      },
+    };
+
+    function log(msg) {
+      const el = document.getElementById('log');
+      const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      el.textContent += `[${time}] ${msg}\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // ---- 动态加载构建产物（IIFE，用 script 标签注入）----
+    await new Promise((resolvePromise) => {
+      const s = document.createElement('script');
+      s.src = '../tmp/dist/snoozepanel.js?t=' + Date.now();
+      s.onload = () => { log('snoozepanel.js 已加载'); resolvePromise(); };
+      s.onerror = () => { log('未找到产物，请先 pnpm build'); resolvePromise(); };
+      document.head.appendChild(s);
+    });
+
+    // 从产物中暴露的注册函数不可直接访问（IIFE），这里直接 new 元素驱动
+    function buildConfig() {
+      const theme = document.getElementById('theme').value;
+      const paper = theme === 'paper';
+      return {
+        enabled: true,
+        idle_seconds: 60,
+        exit_cooldown_seconds: 2,
+        theme,
+        components: {
+          clock: { show: true, style: document.getElementById('clockStyle').value, hour24: true, seconds: true, position: 'center' },
+          calendar: { show: true, week_start: 1, show_week_number: true, format: 'M月D日 dddd', position: 'bottom_center' },
+          lunar: { show: true, format: '{lunar_month}{lunar_day} {ganzhi}{zodiac}年', position: 'bottom_center' },
+          weather: { show: true, entity: 'weather.home', position: 'top_right' },
+          texts: [{ content: '室温 {sensor.temp}°C', position: 'top_left' }],
+        },
+        background: paper
+          ? { type: 'gradient', color: '#f5f1e8', gradient: { from: '#f5f1e8', to: '#e8e0cf', angle: 160 }, images: [], interval_seconds: 30, dim: 0 }
+          : { type: document.getElementById('bgType').value, color: '#0b1020', gradient: { from: '#0b1020', to: '#1b2a4a', angle: 160 }, images: [], interval_seconds: 30, dim: 0.45 },
+      };
+    }
+
+    let el = null;
+    document.getElementById('activate').addEventListener('click', () => {
+      if (!customElements.get('snooze-panel')) { log('snooze-panel 元素未注册'); return; }
+      // 直接实例化元素并驱动
+      el = document.createElement('snooze-panel');
+      el.setConfig({ snoozepanel: buildConfig() });
+      el.hass = mockHass;
+      document.body.appendChild(el);
+      log('已挂载 snooze-panel 元素（idle 60s，或等待自动触发）');
+      // 立即触发：直接访问控制器不便，这里把 idle 设为极小再重挂
+      el.remove();
+      const cfg = buildConfig();
+      cfg.idle_seconds = 1;
+      el = document.createElement('snooze-panel');
+      el.setConfig({ snoozepanel: cfg });
+      el.hass = mockHass;
+      document.body.appendChild(el);
+      log('idle 已设为 1s，屏保即将触发…');
+    });
+
+    document.getElementById('editor').addEventListener('click', () => {
+      if (!customElements.get('snooze-panel-editor')) { log('编辑器未注册'); return; }
+      // 在当前页面内联渲染编辑器（避免 window.open 弹窗拦截）
+      const host = document.getElementById('editor-host');
+      host.innerHTML = '';
+      document.getElementById('editor-card').hidden = false;
+      const ed = document.createElement('snooze-panel-editor');
+      ed.hass = mockHass;
+      ed.setConfig({ snoozepanel: buildConfig() });
+      ed.addEventListener('config-changed', (e) => log('config-changed: ' + JSON.stringify(e.detail.config).slice(0, 120) + '…'));
+      host.appendChild(ed);
+      host.scrollIntoView({ behavior: 'smooth' });
+      log('编辑器已在页面下方渲染');
+    });
+  </script>
+</body>
+</html>

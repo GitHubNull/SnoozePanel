@@ -37,12 +37,13 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   ├── EditorApp.vue   # PrimeVue 中文编辑器根
 │   │   └── forms/          # 分区表单
 │   └── tests/              # Vitest 单测（*.spec.ts）
+├── dev/                    # ★ 本地 mock 实测页（必须入库，供他人测试/核对/验证）
+│   └── index.html          # 内置 mock hass，动态加载 tmp/dist 产物实测
 ├── doc/                    # 文档（见下方文档体系）
 ├── img/                    # 截图（README 引用）
-├── tmp/                    # 唯一临时目录：构建产物/缓存/mock 页/敏感文件（整体 .gitignore）
+├── tmp/                    # 唯一临时目录：构建产物/验证截图/一次性脚本/垃圾数据/敏感文件（整体 .gitignore）
 │   ├── dist/snoozepanel.js # 构建产物（单文件 IIFE）
-│   ├── dev/index.html      # 本地 mock 实测页
-│   ├── tools/              # 只读探测脚本（不入库）
+│   ├── tools/              # 一次性只读探测脚本（不入库）
 │   ├── ha_inventory/       # 设备清单导出（不入库）
 │   └── HA_info.txt         # 生产令牌等敏感信息（不入库）
 ├── package.json            # 工程清单
@@ -71,14 +72,15 @@ pnpm test:watch       # watch 模式
 
 ```bash
 python -m http.server 8765   # 或任意静态服务器
-# 浏览器打开 http://127.0.0.1:8765/tmp/dev/
+# 浏览器打开 http://127.0.0.1:8765/dev/
 ```
 
 ## 目录纪律（红线）
 
 1. **工程文件在项目根**：`package.json` / `pnpm-lock.yaml` / `vite.config.ts` / `vitest.config.ts` / `tsconfig.json` / `node_modules/` 均位于项目根，符合常规 Node 项目结构，**严禁移入 `tmp/`**。
-2. **`tmp/` 是唯一临时目录**：构建产物（`tmp/dist/`）、mock 页（`tmp/dev/`）、缓存、日志、验证截图、敏感文件全部放 `tmp/`，整体已被 `.gitignore` 排除。
-3. **`src/` 只放入库源码**：`.ts` / `.vue`，禁止放测试快照、临时脚本、构建产物。
+2. **`dev/` 是入库测试基建**：mock 实测页（`dev/index.html`）供他人测试/核对/验证，**必须入库**，严禁放入 `tmp/` 或被 `.gitignore` 忽略。
+3. **`tmp/` 是唯一临时目录**：构建产物（`tmp/dist/`）、验证截图、一次性辅助脚本、垃圾/测试数据、敏感文件放 `tmp/`，整体已被 `.gitignore` 排除。
+4. **`src/` 只放入库源码**：`.ts` / `.vue`，禁止放测试快照、临时脚本、构建产物。
 
 ## 安全红线（违反即返工）
 
