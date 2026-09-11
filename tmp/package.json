@@ -1,0 +1,30 @@
+{
+  "name": "snoozepanel",
+  "version": "0.1.0",
+  "description": "Home Assistant dashboard screensaver (lock screen) plugin",
+  "private": true,
+  "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "vue": "^3.5.13",
+    "primevue": "^4.2.5",
+    "@primevue/themes": "^4.2.5",
+    "primeicons": "^7.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/test-utils": "^2.4.6",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

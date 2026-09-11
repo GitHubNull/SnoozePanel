@@ -12,6 +12,7 @@ tmp/node_modules/
 tmp/dist/
 tmp/dev/
 tmp/.vite/
+.vite/
 tmp/coverage/
 *.log
 node_modules/
