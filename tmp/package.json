@@ -5,7 +5,9 @@
   "private": true,
   "type": "module",
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "scripts": {
     "dev": "vite",
@@ -14,17 +16,19 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "vue": "^3.5.13",
-    "primevue": "^4.2.5",
     "@primevue/themes": "^4.2.5",
-    "primeicons": "^7.0.0"
+    "primeicons": "^7.0.0",
+    "primevue": "^4.2.5",
+    "vue": "^3.5.13"
   },
   "devDependencies": {
+    "@rollup/plugin-node-resolve": "^16.0.3",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/test-utils": "^2.4.6",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
+    "vite-plugin-css-injected-by-js": "^3.5.2",
     "vitest": "^2.1.8"
   }
 }
