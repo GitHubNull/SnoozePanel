@@ -1,0 +1,23 @@
+# SnoozePanel gitignore
+# sensitive - never track
+tmp/HA_info.txt
+tmp/HA_PROJECT_NOTES.md
+tmp/tools/
+tmp/ha_inventory/
+*.token
+*.key
+*.pem
+# temp build artifacts
+tmp/node_modules/
+tmp/dist/
+tmp/dev/
+tmp/.vite/
+tmp/coverage/
+*.log
+node_modules/
+dist/
+*.tsbuildinfo
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
