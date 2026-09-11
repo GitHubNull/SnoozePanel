@@ -1,5 +1,11 @@
-# SnoozePanel gitignore
-# sensitive - never track
+# SnoozePanel .gitignore
+
+# ── 临时目录 ────────────────────────────────────────────
+# tmp/ 是唯一临时目录：构建产物、mock 调试页、验证截图、
+# 设备清单导出、依赖缓存全在这里，一律不入库。
+tmp/
+
+# ── 敏感信息红线（即使 tmp/ 规则被改动也绝不入库）────────
 tmp/HA_info.txt
 tmp/HA_PROJECT_NOTES.md
 tmp/tools/
@@ -7,17 +13,15 @@ tmp/ha_inventory/
 *.token
 *.key
 *.pem
-# temp build artifacts
-tmp/node_modules/
-tmp/dist/
-tmp/dev/
-tmp/.vite/
-.vite/
-tmp/coverage/
-*.log
+
+# ── Node / 构建 ─────────────────────────────────────────
 node_modules/
 dist/
 *.tsbuildinfo
+.vite/
+
+# ── 日志与编辑器 ────────────────────────────────────────
+*.log
 .idea/
 .vscode/
 .DS_Store

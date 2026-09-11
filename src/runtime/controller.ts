@@ -26,6 +26,8 @@ export class SnoozeController {
   private active = false;
   private handle: ScreensaverHandle | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 闲置门槛是否已达成（真正闲置计时器触发后置位，任意输入即复位） */
+  private idleElapsed = false;
   private condTimer: ReturnType<typeof setInterval> | null = null;
   private cooldownUntil = 0;
   private ticker: Ticker | null = null;
@@ -88,9 +90,15 @@ export class SnoozeController {
   }
 
   private resetIdle(): void {
+    // 任意输入/退出/路由切换后重新开始闲置计时，同时撤销闲置已达成标记
+    this.idleElapsed = false;
     if (this.idleTimer !== null) clearTimeout(this.idleTimer);
     if (!this.config.enabled) return;
-    this.idleTimer = setTimeout(() => this.tryActivate(), this.config.idle_seconds * 1000);
+    this.idleTimer = setTimeout(() => {
+      // 闲置计时器真正触发：标记门槛已达成，供条件周期重估兜底
+      this.idleElapsed = true;
+      this.tryActivate();
+    }, this.config.idle_seconds * 1000);
   }
 
   private tryActivate(): void {
@@ -135,8 +143,9 @@ export class SnoozeController {
     if (this.destroyed) return;
     if (this.active) {
       if (!this.conditionsMet()) this.exit();
-    } else {
-      // 闲置超时但条件曾不满足 → 条件转好后立即激活
+    } else if (this.idleElapsed) {
+      // 仅当闲置门槛已达成时才兜底：闲置期间条件曾不满足，条件转好后立即激活。
+      // 缺少此判断会导致退出屏保后被本定时器无条件重新激活（绕过闲置门槛）。
       this.tryActivate();
     }
   }

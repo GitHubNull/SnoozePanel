@@ -98,15 +98,39 @@
 - ❌ ES module + importmap：HA 资源机制不支持 importmap。
 - ❌ 外置 Vue CDN：违背自包含原则，且内网环境可能无 CDN。
 
-## 决策 8：目录纪律 = 工程文件全放 tmp/
+## 决策 8：目录纪律 = 工程文件在项目根，tmp/ 仅放临时文件
 
-**结论**：`package.json` / `vite.config.ts` / `tsconfig.json` / `vitest.config.ts` / `node_modules` / `dist` / `dev` 全部放 `tmp/`；`src/` 仅 `.ts`/`.vue` 源码；仓库根 `node_modules` 是指向 `tmp/node_modules` 的 Junction。
+**结论**：`package.json` / `pnpm-lock.yaml` / `vite.config.ts` / `vitest.config.ts` / `tsconfig.json` / `node_modules/` 全部位于**项目根**，遵循常规 Node 项目结构；`tmp/` 只承载临时文件（构建产物 `tmp/dist/`、mock 页 `tmp/dev/`、缓存、验证截图、敏感信息），整体被 `.gitignore` 排除；`src/` 仅 `.ts`/`.vue` 源码。
 
 **理由**：
-- 用户硬性约束：`tmp/` 是唯一临时目录，`src/` 只放入库源码。
-- 工程文件放 `tmp/`：保持仓库根干净，git 追踪的只有源码/文档/截图。
-- Junction 解决依赖解析：src 在 vite root（tmp/）之外，Vite 向上找 node_modules 会找到仓库根；Junction 让仓库根的 node_modules 透明转发到 tmp/node_modules，构建正常。
+- 工程文件放项目根是 Node 生态的通用约定：任何开发者、AI 代理或 CI 打开仓库即懂，无需额外心智负担。
+- `tmp/` 回归它的字面含义——临时目录，只放可随时删除、不入库的产物。
+- git 追踪的依然只有源码/文档/截图，仓库根保持干净。
+
+**曾走过的弯路（已废弃）**：早期曾把 `package.json` 等工程文件全部塞进 `tmp/`，并用仓库根 `node_modules` Junction 转发到 `tmp/node_modules` 来解决依赖解析。该方案非常规、反直觉，且依赖 pnpm 虚拟 store 的路径绑定（目录一旦移动就需重装，实际已踩坑）。**已放弃**。
 
 **备选方案**：
-- ❌ 工程文件放项目根：违反用户目录约束。
-- ❌ 把 src 移进 tmp/：违反「src/ 仅入库源码」约束，且 git 追踪路径混乱。
+- ❌ 工程文件放 `tmp/`：反常规，违反用户明确纠正，已废弃。
+- ❌ 把 `src/` 移进 `tmp/`：违反「src/ 仅入库源码」约束。
+
+## 决策 9：配置持久化 = HA 后端 component + 视图级 lovelace 存储
+
+**结论**：配置分两层持久化——**视图级**配置写进视图 raw YAML 的 `snoozepanel:` 段，随 HA lovelace 存储天然持久化；**设备级**配置记录（每台平板各自的设置、白/黑名单等）**必须落盘到 HA 后端**（custom component 暴露 WebSocket API，存储于 HA `.storage/`），前端只做读写调用。
+
+**理由**：
+- 屏保配置是用户资产，必须跨重启存活：HA 服务重启、浏览器清缓存、换用其他 App/设备都不能丢配置。
+- 仅靠浏览器端持久化（`localStorage` / `sessionStorage` / `IndexedDB`）无法满足：清缓存即丢，且无法在多设备间共享「每台设备配置记录」。
+- 仅有视图级 YAML 也不够：视图 YAML 是「视图配置」，无法承载「每台平板各自的运行时配置记录」。
+- HA 插件生态的标准做法就是后端 custom component + `.storage/` 持久化，前端通过 `hass.callWS()` 读写。
+
+**实现边界**：
+- 前端：统一封装配置读写（优先走后端 WS API；后端不可用时降级为视图 YAML 只读 + console 提示），**严禁把 localStorage 当作配置的权威存储**。
+- 后端：custom component 提供 `snoozepanel/get_config` / `snoozepanel/set_config` 等 WS 命令，按 `device_id` 分区存储。
+- 迁移：从纯前端上翻到后端持久化时，需把已存在的 localStorage 配置一次性上翻（best-effort）。
+
+**备选方案**：
+- ❌ 仅用浏览器 localStorage：清缓存/换 App 即丢，不可接受。
+- ❌ 仅用视图 YAML：无法承载每台设备的独立配置记录。
+- ❌ 复用 `input_text` 等 HA helper 存配置：侵入用户实体列表，且容量/结构受限。
+
+**当前状态**：视图级配置已随 lovelace 持久化生效；后端配置持久化 component 尚未实现，列为 P0 待办（见 `doc/TODO.md`）。

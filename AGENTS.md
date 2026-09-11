@@ -39,24 +39,28 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   └── tests/              # Vitest 单测（*.spec.ts）
 ├── doc/                    # 文档（见下方文档体系）
 ├── img/                    # 截图（README 引用）
-├── tmp/                    # 唯一临时目录：工程文件/依赖/构建产物/缓存/日志全放这里
-│   ├── package.json        # 工程清单（注意：在 tmp/ 下，不在根目录）
-│   ├── vite.config.ts      # Vite lib 构建配置
-│   ├── vitest.config.ts    # 测试配置
-│   ├── tsconfig.json
-│   ├── node_modules/       # pnpm 依赖
+├── tmp/                    # 唯一临时目录：构建产物/缓存/mock 页/敏感文件（整体 .gitignore）
 │   ├── dist/snoozepanel.js # 构建产物（单文件 IIFE）
-│   └── dev/index.html      # 本地 mock 实测页
+│   ├── dev/index.html      # 本地 mock 实测页
+│   ├── tools/              # 只读探测脚本（不入库）
+│   ├── ha_inventory/       # 设备清单导出（不入库）
+│   └── HA_info.txt         # 生产令牌等敏感信息（不入库）
+├── package.json            # 工程清单
+├── pnpm-lock.yaml          # 依赖锁文件
+├── vite.config.ts          # Vite lib 构建配置
+├── vitest.config.ts        # 测试配置
+├── tsconfig.json           # TypeScript 配置
+├── node_modules/           # pnpm 依赖（实体安装）
+├── .gitignore
 ├── README.md
 └── AGENTS.md               # 本文件
 ```
 
 ## 构建与测试命令
 
-所有命令在 `tmp/` 目录下执行：
+所有命令在**项目根目录**下执行：
 
 ```bash
-cd tmp
 pnpm install          # 安装依赖（首次）
 pnpm build            # 构建 → tmp/dist/snoozepanel.js
 pnpm test             # 跑全部单测（Vitest）
@@ -66,23 +70,26 @@ pnpm test:watch       # watch 模式
 本地 mock 实测：
 
 ```bash
-cd tmp
 python -m http.server 8765   # 或任意静态服务器
-# 浏览器打开 http://127.0.0.1:8765/dev/
+# 浏览器打开 http://127.0.0.1:8765/tmp/dev/
 ```
 
 ## 目录纪律（红线）
 
-1. **`tmp/` 是唯一临时目录**：node_modules、构建产物、缓存、日志、dev 页全部放 `tmp/`，严禁在项目根或 `src/` 下新建临时文件。
-2. **`src/` 只放入库源码**：`.ts` / `.vue`，禁止放测试快照、临时脚本、构建产物。
-3. **工程文件在 `tmp/` 下**：`package.json` / `vite.config.ts` / `tsconfig.json` / `vitest.config.ts` 都在 `tmp/`，不在项目根。
-4. **仓库根 `node_modules` 是 Junction**：指向 `tmp/node_modules`（为解决 src 在 vite root 外的依赖解析），不要删除或替换为真实目录。
+1. **工程文件在项目根**：`package.json` / `pnpm-lock.yaml` / `vite.config.ts` / `vitest.config.ts` / `tsconfig.json` / `node_modules/` 均位于项目根，符合常规 Node 项目结构，**严禁移入 `tmp/`**。
+2. **`tmp/` 是唯一临时目录**：构建产物（`tmp/dist/`）、mock 页（`tmp/dev/`）、缓存、日志、验证截图、敏感文件全部放 `tmp/`，整体已被 `.gitignore` 排除。
+3. **`src/` 只放入库源码**：`.ts` / `.vue`，禁止放测试快照、临时脚本、构建产物。
 
 ## 安全红线（违反即返工）
 
 - **令牌/密钥绝不入库**：`tmp/HA_info.txt`（生产令牌）、`tmp/HA_PROJECT_NOTES.md`（SSH 密钥路径+内网拓扑）、`tmp/tools/`、`tmp/ha_inventory/` 已在 `.gitignore`，严禁 `git add -f` 强制添加。
 - **生产 HA 只读探测**：对生产环境（http://192.168.31.205:8123）只允许只读 API 调用；如需写入实测，必须在专用 `snoozepanel-test` 视图，完毕立即删除恢复原状。
 - **不收集数据**：插件代码中严禁出现任何遥测、上报、外发请求。
+
+## 架构要点（改动前必读）
+
+- **配置持久化必须依赖 HA 后端**：视图级配置随 lovelace 存储持久化；**设备级配置记录（每台平板的独立设置）必须落盘到 HA 后端**（custom component + `.storage/`），严禁仅用浏览器 `localStorage` 承载配置——HA 重启、清缓存、换 App 都会丢。当前 device id 用 localStorage 仅作临时标识，配置持久化后端为 P0 待办（见 `doc/TODO.md`）。
+- **不做的事**：不引入遥测/上报/外发请求；不侵入 HA 现有生产视图与实体。
 
 ## 代码规范
 

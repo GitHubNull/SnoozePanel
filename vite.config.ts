@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-// 源码在 ../src（仓库根的 src/），产物输出到 tmp/dist/
-const srcRoot = resolve(here, '../src');
+// 工程根即仓库根，源码在 src/；构建产物属临时文件，输出到 tmp/dist/
+const srcRoot = resolve(here, 'src');
 
 export default defineConfig({
   // 单文件产物：CSS 注入 JS，不单独产出 .css
@@ -28,7 +28,7 @@ export default defineConfig({
     dedupe: ['vue'],
   },
   build: {
-    outDir: resolve(here, 'dist'),
+    outDir: resolve(here, 'tmp/dist'),
     emptyOutDir: true,
     // 单文件产物：内联所有动态导入与 CSS
     cssCodeSplit: false,

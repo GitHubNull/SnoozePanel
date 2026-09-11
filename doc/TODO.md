@@ -2,8 +2,9 @@
 
 > 按优先级 P0–P3 排列，不含工时估算。P0 = 影响主流程可用性，P3 = 锦上添花。
 
-## P0 — 当前版本必须说明的限制
+## P0 — 当前版本必须说明的限制与最高优先级待办
 
+- [ ] **设备级配置尚无后端持久化（最高优先级）**：当前 device id 仅存浏览器 `localStorage`，配置主体在视图 YAML。**必须实现 HA 后端 custom component 来持久化每台设备的配置记录**——否则 HA 重启、清浏览器缓存、换 App/设备都会导致配置丢失或错乱。方案见 `doc/ARCHITECTURE.md` 决策 9。
 - [ ] **视图配置热更新延迟**：HA 前端对视图 raw YAML 的修改需要**刷新页面**才能被 `<snooze-panel>` 元素感知（HA 的 `config-changed` 仅覆盖卡片级配置）。规避：改完视图 YAML 后按 F5。
 - [ ] **多视图同时启用时的单例约束**：`SnoozeController` 是单例，若多个视图都配置了 `snoozepanel:`，切换视图时以后激活的视图配置为准。当前实现已正确处理（`location-changed` 重置），但多视图配置不一致时可能产生用户困惑。
 - [ ] **`weather` 实体属性兼容性**：不同天气集成（如彩云、和风、OpenWeatherMap）的 `attributes` 字段存在差异。当前 WeatherView 读取 `temperature` / `humidity` / `state`，已在生产环境 `weather.forecast_home`（Met.no）验证通过；其他集成若字段缺失会显示占位符而非报错。
@@ -32,4 +33,4 @@
 
 - ❌ **不收集任何使用数据**：违背插件设计原则。
 - ❌ **不支持 HA 2023 以前版本**：依赖较新的 custom card editor API，旧版本不兼容。
-- ❌ **不做后端集成**：纯前端插件，不新增 HA 后端 component。
+- ❌ **不把浏览器本地存储当作配置权威来源**：`localStorage` 只能作临时标识/缓存，配置必须走后端持久化（见 `doc/ARCHITECTURE.md` 决策 9）。
