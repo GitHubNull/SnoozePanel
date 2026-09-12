@@ -13,6 +13,7 @@ import ToggleSwitch from 'primevue/toggleswitch';
 import Select from 'primevue/select';
 import InputNumber from 'primevue/inputnumber';
 import { SCREEN_PRESETS, CUSTOM_PRESET_ID, presetById, matchPreset, clampScreenDim } from '@/core/screen';
+import type { RulerUnit } from '@/core/ruler';
 import { injectEditorLayout, injectEditorDraft } from '../editorContext';
 import { ZOOM_PRESETS, ZOOM_LIMITS, clampZoomPercent, type ToolbarEdge } from '../useEditorLayout';
 
@@ -82,6 +83,13 @@ const screenHeight = computed<number>({
 function onGridStepChange(value: unknown): void {
   emit('update:gridStep', Number(value ?? 0));
 }
+
+// ---- 标尺单位（分辨率 px / 厘米 / 毫米，就地写入 UI 偏好） ----
+const rulerUnitOptions: { label: string; value: RulerUnit }[] = [
+  { label: '分辨率', value: 'px' },
+  { label: '厘米', value: 'cm' },
+  { label: '毫米', value: 'mm' },
+];
 
 // ---- 缩放适配（适配 / 预设档位 / 自定义） ----
 /** 缩放下拉选项：适配 + 百分比档位 + 自定义 */
@@ -259,6 +267,19 @@ function onDragStart(ev: PointerEvent): void {
       @update:model-value="onGridStepChange"
     />
     <Button label="恢复默认" size="small" text @click="emit('reset-grid')" />
+    <span class="tb-sep"></span>
+
+    <!-- 标尺（分辨率 px / 厘米 / 毫米，随预览缩放） -->
+    <label class="tb-toggle"><ToggleSwitch v-model="ui.ruler.show" /><span>标尺</span></label>
+    <Select
+      v-model="ui.ruler.unit"
+      :options="rulerUnitOptions"
+      option-label="label"
+      option-value="value"
+      size="small"
+      class="ruler-unit"
+      aria-label="标尺单位"
+    />
     <span class="tb-sep"></span>
 
     <!-- 屏幕尺寸 -->
@@ -456,6 +477,7 @@ function onDragStart(ev: PointerEvent): void {
   min-width: 0;
 }
 .grid-preset { width: 84px; }
+.ruler-unit { width: 92px; }
 .grid-number { width: 92px; }
 .screen-preset { width: 150px; }
 .screen-dim { width: 104px; }

@@ -20,6 +20,7 @@ import type { HassLike } from '@/core/hass';
 import { resolveDeviceId } from '@/core/device';
 import { Ticker } from '@/runtime/ticker';
 import { useEditorLayout, GRID_STEP_PRESETS, DEFAULT_EDITOR_LAYOUT, type PanelKey } from './useEditorLayout';
+import { acquireChromeTheme, releaseChromeTheme } from './chromeTheme';
 import { useEditorDraft } from './composables/useEditorDraft';
 import { useComponentSelection } from './composables/useComponentSelection';
 import { useDeviceSave } from './composables/useDeviceSave';
@@ -172,6 +173,8 @@ const saveState = computed(() => {
 });
 
 onMounted(() => {
+  // 暗色外观：给 documentElement 挂类，使 teleport 到 body 的浮层共用暗色令牌
+  acquireChromeTheme();
   previewTicker.start();
   previewTicker.watchVisibility();
   // 宿主尺寸自适应（首帧 + 后续变化）
@@ -184,6 +187,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  releaseChromeTheme();
   previewTicker.destroy();
   hostObserver?.disconnect();
   hostObserver = null;
@@ -192,7 +196,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="plugin-shell">
+  <div class="plugin-shell snooze-editor-dark">
     <!-- 保存等操作反馈的 Toast 容器（底部右侧，自动消失） -->
     <Toast position="bottom-right" />
 
@@ -284,8 +288,8 @@ onBeforeUnmount(() => {
   /* HA 卡片编辑弹窗为自动高度宿主：留 min-height 避免高度塌陷 */
   min-height: 460px;
   overflow: hidden;
-  background: var(--card-background-color, #fff);
-  color: var(--primary-text-color, #1c1c1c);
+  background: var(--sp-chrome-bg, #33373a);
+  color: var(--sp-chrome-text, #d8dcdf);
 }
 
 /* ============ 工作区：左分类 / 中画布 / 右属性 ============ */
@@ -294,5 +298,22 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+</style>
+
+<style>
+/*
+ * 编辑器暗色外观（PS6 风格暗灰）——全局非 scoped。
+ * 恒定暗色外壳：不随 HA 主题切换，避免浅色主题下大片亮底刺眼。
+ * 令牌挂在 .snooze-editor-dark 上（EditorApp 挂载时将其加到 documentElement），
+ * 使 teleport 到 body 的 Popover / Dialog / Toast 与外壳共用同一套底色与文字色。
+ */
+.snooze-editor-dark {
+  --sp-chrome-bg: #33373a; /* 面板 / 菜单 / 状态栏底色 */
+  --sp-chrome-bg-2: #3f4448; /* 悬停 / 抬升面 */
+  --sp-chrome-sunken: #2a2d30; /* 下沉 / 输入底 */
+  --sp-chrome-border: #494e52; /* 分隔线 / 描边 */
+  --sp-chrome-text: #d8dcdf; /* 主文字 */
+  --sp-chrome-text-dim: #98a0a6; /* 次要文字 / 提示 */
 }
 </style>

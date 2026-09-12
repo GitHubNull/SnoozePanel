@@ -18,7 +18,7 @@
   font-size: 13px;
 }
 .field small {
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -47,7 +47,7 @@
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
 }
 .weekday-chips {
   display: flex;
@@ -68,7 +68,7 @@
   font-family: monospace;
   font-size: 13px;
   padding: 6px 10px;
-  background: var(--card-background-color, #f5f5f5);
+  background: var(--sp-chrome-bg-2, #3f4448);
   border-radius: 6px;
   user-select: text;
 }

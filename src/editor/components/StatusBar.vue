@@ -32,10 +32,10 @@ defineProps<{
   flex: none;
   height: 30px;
   padding: 0 12px;
-  border-top: 1px solid var(--divider-color, #e0e0e0);
-  background: var(--card-background-color, #fff);
+  border-top: 1px solid var(--sp-chrome-border, #494e52);
+  background: var(--sp-chrome-bg, #33373a);
   font-size: 12px;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
 }
 .status-hint {
   flex: 1;

@@ -131,8 +131,8 @@ function onResizeStart(ev: PointerEvent): void {
   flex: none;
   min-height: 0;
   position: relative;
-  border-right: 1px solid var(--divider-color, #e0e0e0);
-  background: var(--card-background-color, #fff);
+  border-right: 1px solid var(--sp-chrome-border, #494e52);
+  background: var(--sp-chrome-bg, #33373a);
   transition: width 0.12s ease;
 }
 .plugin-cats.collapsed {
@@ -160,12 +160,12 @@ function onResizeStart(ev: PointerEvent): void {
   transition: background 0.15s;
 }
 .component-item:hover {
-  background: var(--card-background-color, #f5f5f5);
+  background: var(--sp-chrome-bg-2, #3f4448);
 }
 /* 选中态：浅色主题底 + 内描边表达选中，避免实心底 + 高光滤镜把开关冲成纯白而看不清 on/off */
 .component-item.active {
   background: color-mix(in srgb, var(--primary-color, #5ea0ff) 16%, transparent);
-  color: var(--primary-text-color, #1c1c1c);
+  color: var(--sp-chrome-text, #d8dcdf);
   font-weight: 600;
   box-shadow: inset 0 0 0 1.5px var(--primary-color, #5ea0ff);
 }

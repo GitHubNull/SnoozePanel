@@ -8,6 +8,7 @@
  *   - 窄宿主（HA 卡片编辑弹窗等）自动收起左右面板，但用户手动调整后不再干预。
  */
 import { computed, reactive, ref, watch } from 'vue';
+import type { RulerUnit } from '@/core/ruler';
 
 /** 侧栏面板标识 */
 export type PanelKey = 'cats' | 'props';
@@ -26,6 +27,12 @@ export interface GridState {
   snap: boolean;
   /** 网格步长（百分比，1-20） */
   step: number;
+}
+
+/** 预览标尺偏好（分辨率 px / 厘米 / 毫米） */
+export interface RulerState {
+  show: boolean;
+  unit: RulerUnit;
 }
 
 /** 画布工具条停靠边 */
@@ -53,6 +60,7 @@ export interface EditorLayoutState {
   cats: PanelState;
   props: PanelState;
   grid: GridState;
+  ruler: RulerState;
   toolbar: ToolbarState;
   zoom: ZoomState;
 }
@@ -66,6 +74,8 @@ export const DEFAULT_EDITOR_LAYOUT: EditorLayoutState = {
   cats: { w: 260, collapsed: false },
   props: { w: 340, collapsed: false },
   grid: { show: true, snap: true, step: 5 },
+  // 标尺默认开启，默认按分辨率（px）刻度
+  ruler: { show: true, unit: 'px' },
   // 工具条默认收起、停靠顶部、水平排列
   toolbar: { edge: 'top', orientation: 'horizontal', collapsed: true },
   zoom: { mode: 'fit', percent: 100 },
@@ -118,6 +128,11 @@ function readOrientation(v: unknown, fallback: ToolbarOrientation): ToolbarOrien
   return v === 'horizontal' || v === 'vertical' ? v : fallback;
 }
 
+/** 校验并读取标尺单位（非法值回退） */
+function readRulerUnit(v: unknown, fallback: RulerUnit): RulerUnit {
+  return v === 'px' || v === 'cm' || v === 'mm' ? v : fallback;
+}
+
 /** 深拷贝默认值（避免调用方修改默认常量） */
 function cloneDefault(): EditorLayoutState {
   return JSON.parse(JSON.stringify(DEFAULT_EDITOR_LAYOUT)) as EditorLayoutState;
@@ -146,6 +161,11 @@ function loadLayout(): EditorLayoutState {
         show: parsed.grid?.show !== false,
         snap: parsed.grid?.snap !== false,
         step: clampNum(parsed.grid?.step, GRID_STEP_LIMITS.min, GRID_STEP_LIMITS.max, fallback.grid.step),
+      },
+      ruler: {
+        // 标尺默认开启：缺省或非 false 均视为开启
+        show: parsed.ruler?.show !== false,
+        unit: readRulerUnit(parsed.ruler?.unit, fallback.ruler.unit),
       },
       toolbar: {
         edge: readEdge(parsed.toolbar?.edge, fallback.toolbar.edge),

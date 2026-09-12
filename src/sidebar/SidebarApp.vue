@@ -123,17 +123,17 @@ async function onSave(): Promise<void> {
 }
 .subtitle {
   margin: 0;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
   font-size: 14px;
   line-height: 1.6;
 }
 .loading {
   padding: 48px 0;
   text-align: center;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
 }
 .editor-wrap {
-  background: var(--card-background-color, #fff);
+  background: var(--sp-chrome-bg, #33373a);
   border-radius: 12px;
   padding: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
@@ -147,7 +147,7 @@ async function onSave(): Promise<void> {
   bottom: 20px;
   margin-top: 24px;
   padding: 16px;
-  background: var(--card-background-color, #fff);
+  background: var(--sp-chrome-bg, #33373a);
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
   display: flex;

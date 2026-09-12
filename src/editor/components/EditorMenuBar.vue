@@ -185,8 +185,8 @@ function onSave(): void {
   flex: none;
   height: 52px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--divider-color, #e0e0e0);
-  background: var(--card-background-color, #fff);
+  border-bottom: 1px solid var(--sp-chrome-border, #494e52);
+  background: var(--sp-chrome-bg, #33373a);
 }
 .plugin-menu.collapsed {
   height: 40px;
@@ -203,7 +203,7 @@ function onSave(): void {
 }
 .menu-brand-sub {
   font-size: 11px;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
 }
 .menu-brand.slim {
   flex-direction: row;
@@ -212,7 +212,7 @@ function onSave(): void {
 }
 .menu-state {
   font-size: 12px;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
 }
 .menu-nav {
   display: flex;

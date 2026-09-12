@@ -248,8 +248,8 @@ function onResizeStart(ev: PointerEvent): void {
   flex: none;
   min-height: 0;
   position: relative;
-  border-left: 1px solid var(--divider-color, #e0e0e0);
-  background: var(--card-background-color, #fff);
+  border-left: 1px solid var(--sp-chrome-border, #494e52);
+  background: var(--sp-chrome-bg, #33373a);
   transition: width 0.12s ease;
 }
 .plugin-props.collapsed {
@@ -274,9 +274,9 @@ function onResizeStart(ev: PointerEvent): void {
   gap: 12px;
   padding: 10px;
   margin-bottom: 12px;
-  border: 1px solid var(--divider-color, #e0e0e0);
+  border: 1px solid var(--sp-chrome-border, #494e52);
   border-radius: 10px;
-  background: var(--card-background-color, #f5f5f5);
+  background: var(--sp-chrome-bg-2, #3f4448);
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -290,7 +290,7 @@ function onResizeStart(ev: PointerEvent): void {
   flex: none;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid var(--divider-color, #e0e0e0);
+  border: 1px solid var(--sp-chrome-border, #494e52);
   background: #000;
 }
 .face-selector-info {
@@ -317,7 +317,7 @@ function onResizeStart(ev: PointerEvent): void {
   font-weight: 600;
   font-size: 13px;
   margin-bottom: 8px;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
 }
 .layout-inputs {
   display: grid;
@@ -329,7 +329,7 @@ function onResizeStart(ev: PointerEvent): void {
   margin-top: 8px;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
 }
 .layout-input {
   display: flex;
@@ -338,7 +338,7 @@ function onResizeStart(ev: PointerEvent): void {
 }
 .layout-input span {
   font-size: 12px;
-  color: var(--secondary-text-color, #888);
+  color: var(--sp-chrome-text-dim, #98a0a6);
   flex: none;
   min-width: 16px;
 }

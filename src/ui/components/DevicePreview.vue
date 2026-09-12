@@ -18,6 +18,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSPro
 import type { SnoozeConfig, ComponentLayout } from '@/core/types';
 import { presetById, type ScreenSize } from '@/core/screen';
 import ScreensaverApp from '@/ui/ScreensaverApp.vue';
+import ScreenRulers from '@/ui/components/ScreenRulers.vue';
+import type { RulerUnit } from '@/core/ruler';
 
 const props = withDefaults(
   defineProps<{
@@ -37,6 +39,8 @@ const props = withDefaults(
     zoomMode?: 'fit' | 'percent';
     /** 受控缩放百分比（仅 zoomMode='percent' 且受控时生效） */
     zoomPercent?: number;
+    /** 外挂标尺（仅 editMode 且 show 时渲染，随预览缩放） */
+    rulers?: { show: boolean; unit: RulerUnit };
   }>(),
   {
     grid: () => ({ show: true, snap: true, step: 5 }),
@@ -45,6 +49,8 @@ const props = withDefaults(
     // 缺省即未受控：显式给出 undefined 默认值，触发内部适配/1:1 逻辑
     zoomMode: undefined,
     zoomPercent: undefined,
+    // 缺省不显示标尺（dev 独立挂载 / 生产屏保不受影响）
+    rulers: () => ({ show: false, unit: 'px' }),
   },
 );
 
@@ -107,19 +113,40 @@ const bezel = computed<BezelSpec>(() => BEZEL[kind.value]);
 const bodyW = computed(() => props.screen.width + bezel.value.pad * 2);
 const bodyH = computed(() => props.screen.height + bezel.value.pad * 2);
 
+/** 标尺槽厚度（设备 CSS px） */
+const RULER_THICKNESS = 22;
+/** 是否渲染标尺（仅编辑态且用户开启） */
+const rulerOn = computed(() => props.editMode && props.rulers.show);
+/** 外框包裹尺寸 = 机身 + 标尺槽（左侧 / 底部各预留一道） */
+const frameW = computed(() => bodyW.value + (rulerOn.value ? RULER_THICKNESS : 0));
+const frameH = computed(() => bodyH.value + (rulerOn.value ? RULER_THICKNESS : 0));
+
 /**
  * 设备机身样式（俯视：金属外框 + 内嵌屏幕）：恒为设备像素尺寸，不承载整体缩放。
- * percent 模式下机身以左上为原点做 transform: scale（配合外框包裹层预留的缩放后尺寸）。
- * 外框厚度/内外圆角经 CSS 变量下发，供样式层按形态渲染。
+ * 机身在外框内绝对定位，左侧让出标尺槽；缩放由外层 .device-scaled（percent）
+ * 或 .device-frame（fit）承载。外框厚度/内外圆角经 CSS 变量下发，按形态渲染。
  */
 const bodyStyle = computed<CSSProperties>(() => {
-  const base: CSSProperties = {
+  return {
+    // 机身在外框内的绝对定位：左侧让出标尺槽（无标尺时为 0）
+    position: 'absolute',
+    left: `${rulerOn.value ? RULER_THICKNESS : 0}px`,
+    top: '0px',
     width: `${bodyW.value}px`,
     height: `${bodyH.value}px`,
     '--bezel-pad': `${bezel.value.pad}px`,
     '--bezel-outer': `${bezel.value.outer}px`,
     '--bezel-inner': `${bezel.value.inner}px`,
   };
+});
+
+/**
+ * 缩放层样式（包裹机身与标尺，使二者随预览同步缩放）。
+ * fit 模式尺寸为自然外框尺寸，缩放由外框承载；
+ * percent 模式以左上角为原点整体缩放（外框预留缩放后尺寸以支持滚动）。
+ */
+const scaledStyle = computed<CSSProperties>(() => {
+  const base: CSSProperties = { width: `${frameW.value}px`, height: `${frameH.value}px` };
   if (mode.value === 'percent') {
     base.transform = `scale(${effectiveScale.value})`;
     base.transformOrigin = 'top left';
@@ -129,15 +156,19 @@ const bodyStyle = computed<CSSProperties>(() => {
 
 /**
  * 外框包裹层样式：承载整体缩放。
- * fit 模式以机身中心锚点居中 + 等比缩放；
+ * fit 模式以机身中心锚点居中 + 等比缩放（外框显式尺寸 = 机身 + 标尺槽）；
  * percent 模式预留缩放后尺寸（width/height），使缩放内容超出时可滚动。
  */
 const frameStyle = computed<CSSProperties>(() => {
   if (mode.value === 'fit') {
-    return { transform: `translate(-50%, -50%) scale(${effectiveScale.value})` };
+    return {
+      width: `${frameW.value}px`,
+      height: `${frameH.value}px`,
+      transform: `translate(-50%, -50%) scale(${effectiveScale.value})`,
+    };
   }
   const s = effectiveScale.value;
-  return { width: `${bodyW.value * s}px`, height: `${bodyH.value * s}px` };
+  return { width: `${frameW.value * s}px`, height: `${frameH.value * s}px` };
 });
 
 /** 预设中文名（未命中视为自定义） */
@@ -158,7 +189,7 @@ function recompute(): void {
   const pad = 18;
   const availW = el.clientWidth - pad * 2;
   const availH = el.clientHeight - pad * 2;
-  const s = Math.min(availW / bodyW.value, availH / bodyH.value);
+  const s = Math.min(availW / frameW.value, availH / frameH.value);
   fitScale.value = Number.isFinite(s) && s > 0 ? s : 1;
 }
 
@@ -182,7 +213,7 @@ onBeforeUnmount(() => {
 
 /** 目标尺寸/形态变化：机身自适应（自动跟随当前配置的屏幕尺寸） */
 watch(
-  () => [props.screen.width, props.screen.height, kind.value],
+  () => [props.screen.width, props.screen.height, kind.value, rulerOn.value],
   () => void nextTick(recompute),
 );
 
@@ -205,21 +236,34 @@ function toggleFit(): void {
   <div ref="stageEl" class="device-stage" :class="mode === 'fit' ? 'is-fit' : 'is-percent'">
     <!-- 外框包裹层：承载整体缩放（fit 居中缩放；percent 预留缩放后尺寸以支持滚动） -->
     <div class="device-frame" :class="{ 'is-fit': mode === 'fit' }" :style="frameStyle">
-      <!-- 设备机身（俯视）：金属外框模拟真实设备外壳，内部为屏幕 -->
-      <div class="device-body" :class="[`is-${kind}`]" :style="bodyStyle">
-        <div class="device-screen">
-          <ScreensaverApp
-            :config="config"
-            :device-id="deviceId"
-            :grid="grid"
-            :selected="selected"
-            :edit-mode="editMode"
-            @update:layout="onLayoutUpdate"
-            @select="onSelect"
-          />
+      <!-- 缩放层：包裹机身与标尺，使二者随预览同步缩放 -->
+      <div class="device-scaled" :style="scaledStyle">
+        <!-- 设备机身（俯视）：金属外框模拟真实设备外壳，内部为屏幕 -->
+        <div class="device-body" :class="[`is-${kind}`]" :style="bodyStyle">
+          <div class="device-screen">
+            <ScreensaverApp
+              :config="config"
+              :device-id="deviceId"
+              :grid="grid"
+              :selected="selected"
+              :edit-mode="editMode"
+              @update:layout="onLayoutUpdate"
+              @select="onSelect"
+            />
+          </div>
+          <!-- 玻璃反光（纯装饰，不拦截手势） -->
+          <span class="device-glare" aria-hidden="true"></span>
         </div>
-        <!-- 玻璃反光（纯装饰，不拦截手势） -->
-        <span class="device-glare" aria-hidden="true"></span>
+
+        <!-- 外挂标尺：编辑态 + 用户开启时显示，随预览一起缩放 -->
+        <ScreenRulers
+          v-if="rulerOn"
+          :width="screen.width"
+          :height="screen.height"
+          :bezel-pad="bezel.pad"
+          :thickness="RULER_THICKNESS"
+          :unit="rulers.unit"
+        />
       </div>
     </div>
 
@@ -269,6 +313,11 @@ function toggleFit(): void {
   top: 50%;
 }
 
+/* 缩放层：包裹机身与标尺；percent 模式下其自身被整体缩放，标尺因此与机身同步 */
+.device-scaled {
+  position: relative;
+}
+
 /*
  * 设备机身（俯视）：金属外框 + 内嵌屏幕，模拟真实设备平放桌面的效果。
  * 外框厚度/圆角由 --bezel-* 变量（随设备形态）驱动；padding 即边框厚度，
@@ -289,12 +338,7 @@ function toggleFit(): void {
     0 26px 48px -16px rgba(0, 0, 0, 0.78),
     0 10px 22px -10px rgba(0, 0, 0, 0.6);
 }
-/* percent 模式：机身以左上为原点，配合外框包裹层的缩放后尺寸 */
-.device-stage.is-percent .device-body {
-  position: absolute;
-  left: 0;
-  top: 0;
-}
+/* 机身定位（含标尺槽偏移）由 bodyStyle 内联控制（fit / percent 通用，不再区分模式） */
 
 /* 屏幕（玻璃面）：内圆角略小于外框，形成窄边框过渡；溢出裁剪以承载屏保 */
 .device-screen {

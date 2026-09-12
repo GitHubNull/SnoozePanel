@@ -4,6 +4,19 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.8.0] - 2026-09-12 23:13:58
+
+### Added
+- 画布外挂标尺（`core/ruler.ts` 纯函数 + `ScreenRulers.vue`）：模拟屏幕左缘/下缘纵、横两把标尺（0 点在屏幕左下角，向上/向右递增），随预览同步缩放；刻度采用「nice step」策略（1/2/5×10ⁿ 档位，主刻度 8 段目标 + 5 等分次刻度），单位可切换分辨率(px)/厘米/毫米（1 英寸 = 96 CSS 参考像素）
+- DevicePreview 标尺槽：左侧/底部各预留 22px 标尺槽，新增 `.device-scaled` 缩放层包裹机身与标尺使二者同步缩放（fit/percent 的适配与滚动尺寸均纳入标尺槽）
+- 编辑器恒定暗色外观（`chromeTheme.ts` + `--sp-chrome-*` 六令牌，PS6 风格暗灰）：挂载时按引用计数将 `.snooze-editor-dark` 类加到 `documentElement`，使 teleport 到 body 的 Popover / Dialog / Toast 共用深色令牌；多宿主（卡片编辑器/侧边栏）共存安全
+- 画布工具条新增标尺开关与单位选择；`useEditorLayout` 新增 ruler 偏好（show 默认开启 + unit，非法值回退）
+- 测试：新增 `ruler.spec.ts`（nice step 刻度 / px·cm·mm 换算 / 边界防护）
+
+### Changed
+- 编辑器全部组件与样式（五区子组件 / editor.css / panel.css / FaceMarketplace / SidebarApp）的 HA 主题变量（`--card-background-color` 等）替换为 `--sp-chrome-*` 恒定暗色令牌，不随 HA 浅色主题呈现大片亮底
+- `EditorApp` 外壳底色改为 `--sp-chrome-bg`（恒定暗色），挂载/卸载时获取/释放暗色外观
+
 ## [0.7.0] - 2026-09-12 22:44:54
 
 ### Added

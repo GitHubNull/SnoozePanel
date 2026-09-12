@@ -67,6 +67,7 @@ function onSelect(compKey: string): void {
       :selected="selected"
       :zoom-mode="uiLayout.zoom.mode"
       :zoom-percent="uiLayout.zoom.percent"
+      :rulers="uiLayout.ruler"
       edit-mode
       @update:layout="onLayoutUpdate"
       @select="onSelect"

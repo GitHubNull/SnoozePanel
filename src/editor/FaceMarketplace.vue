@@ -193,9 +193,9 @@ function onHide(): void {
   position: relative;
   display: flex;
   flex-direction: column;
-  border: 2px solid var(--divider-color, #2a3346);
+  border: 2px solid var(--sp-chrome-border, #494e52);
   border-radius: 14px;
-  background: var(--card-background-color, #151a23);
+  background: var(--sp-chrome-bg-2, #3f4448);
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
@@ -233,7 +233,7 @@ function onHide(): void {
 .face-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-color, #e9edf5);
+  color: var(--sp-chrome-text, #d8dcdf);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
