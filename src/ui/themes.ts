@@ -4,6 +4,8 @@
  */
 
 export interface Theme {
+  /** 主题键（表盘据此可靠区分配色，避免依赖中文显示名） */
+  key: 'midnight' | 'paper';
   name: string;
   /** 主文字色 */
   text: string;
@@ -19,6 +21,7 @@ export interface Theme {
 
 export const THEMES: Record<'midnight' | 'paper', Theme> = {
   midnight: {
+    key: 'midnight',
     name: '深夜',
     text: '#eef2f8',
     textSecondary: 'rgba(238, 242, 248, 0.62)',
@@ -27,6 +30,7 @@ export const THEMES: Record<'midnight' | 'paper', Theme> = {
     fontFamily: '"Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
   },
   paper: {
+    key: 'paper',
     name: '宣纸',
     text: '#2b2620',
     textSecondary: 'rgba(43, 38, 32, 0.6)',

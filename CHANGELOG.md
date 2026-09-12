@@ -4,6 +4,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-09-12 20:47:25
+
+### Added
+- 首个第三方表盘「潜水表」（`src/ui/faces/thirdparty/diver/`）：钢壳 + 陶瓷单向旋转表圈（60 分钟刻度 + 12 点夜光珠）+ 夜光时标（12 点三角 / 6·9 点长棒）+ 3 点位日期窗 + 剑形指针 + 棒棒糖秒针；按 `theme.key` 派生钢/夜光配色（午夜 = 冷钢高亮夜光，宣纸 = 暖钢收敛夜光），组件拆为 DiverBezel / DiverHands / palette.ts
+- `doc/开发维护/第三方表盘开发指南.md`：目录契约（放入 `thirdparty/<id>/` 即自动注册）、FaceProps、`face.meta.ts` 字段、主题接入（`theme.key`）、动效约定（纯 CSS + reduced-motion 回退）、SVG defs 唯一性（`useId` 前缀）、验证机制与自检清单
+- `Theme.key` 字段（`'midnight' | 'paper'`）：表盘据此可靠区分配色，不再依赖中文显示名
+- 测试：`faces.spec.ts` 新增第三方注册/渲染断言（内置恰好 6 款按 `source` 分组、第三方含 `diver`、双主题渲染）；`drag.spec.ts` 等既有用例不变
+
+### Changed
+- chrono 表盘主题化金属升级：表圈按 `theme.key` 切换（午夜 = 暖玫瑰金 / 宣纸 = 古铜深金），新增镜面高光、日内瓦环形纹理、边缘暗角与拉丝多段渐变
+- chrono 齿轮组改为纯 CSS 关键帧匀速传动（原为 1s tick 逐帧重算）：传动比按齿数推导（18T 60s 正转 / 12T 40s 反转 / 10T 33.33s 正转），共用相位偏移保证齿牙啮合；`prefers-reduced-motion: reduce` 下停转
+- chrono 星期子表盘由 SUN–SAT 改为中文「日~六」；指针增夜光内嵌线/抛光高光，秒针加尾部配重，子表盘指针改锥形配重并带平滑扫动过渡
+- chrono / diver 全部 `<defs>` id 加 `useId()` 实例前缀（市场预览 + 全屏多实例同时挂载不串色），`faces.spec.ts` 断言同步更新
+- 文档同步：进阶配置（chrono 描述 + 第三方表盘章节）、代码结构导读（registry 双 glob / 新增表盘步骤）、验收自检清单（齿轮动效 / 第三方市场与双主题检查项）
+
 ## [0.4.1] - 2026-09-12 20:18:03
 
 ### Added

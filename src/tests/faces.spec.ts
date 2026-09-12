@@ -13,8 +13,17 @@ function props(): FaceProps {
 
 describe('表盘注册表', () => {
   it('内置 6 款表盘全部注册', () => {
-    const ids = listFaces().map((f) => f.id).sort();
-    expect(ids).toEqual(['analog', 'chrono', 'digital', 'minimal', 'orbit', 'ring']);
+    const builtinIds = listFaces().filter((f) => f.source === 'builtin').map((f) => f.id).sort();
+    expect(builtinIds).toEqual(['analog', 'chrono', 'digital', 'minimal', 'orbit', 'ring']);
+  });
+
+  it('第三方表盘被自动扫描注册（thirdparty/<id>/）', () => {
+    const thirdparty = listFaces().filter((f) => f.source === 'thirdparty');
+    expect(thirdparty.map((f) => f.id)).toEqual(['diver']);
+    expect(thirdparty[0].label).toBe('潜水表');
+    expect(thirdparty[0].kind).toBe('analog');
+    expect(hasFace('diver')).toBe(true);
+    expect(getFace('diver').source).toBe('thirdparty');
   });
 
   it('数字表盘排在模拟表盘之前', () => {
@@ -42,10 +51,12 @@ describe('表盘注册表', () => {
       expect(['digital', 'analog']).toContain(o.kind);
       expect(['builtin', 'thirdparty']).toContain(o.source);
     }
+    // 摘要中显式包含第三方表盘 diver
+    expect(options.some((o) => o.id === 'diver' && o.source === 'thirdparty')).toBe(true);
   });
 
-  it('内置 6 款表盘 source 均为 builtin', () => {
-    for (const f of listFaces()) {
+  it('内置表盘 source 均为 builtin', () => {
+    for (const f of listFaces().filter((f) => f.source === 'builtin')) {
       expect(f.source).toBe('builtin');
     }
   });
@@ -77,11 +88,13 @@ describe('表盘渲染（真实挂载每款表盘）', () => {
     const wrapper = mount(getFace('chrono').component, { props: props() });
     const html = wrapper.html();
     expect(html).toContain('<svg');
-    // 两个子表盘（日期 31 天 / 星期 7 天）
-    expect(html).toContain('SUN');
-    // 齿轮 defs 渐变
-    expect(html).toContain('url(#bezel)');
-    expect(html).toContain('url(#dial)');
+    // 两个子表盘（日期 31 天 / 星期 7 天，星期为中文编号 一~日）
+    expect(html).toContain('三');
+    expect(html).not.toContain('SUN');
+    // defs 渐变 id 带实例前缀（避免多实例冲突），断言其命名与引用一致
+    expect(html).toMatch(/id="bezel-[^"]+"/);
+    expect(html).toMatch(/url\(#bezel-[^)]+\)/);
+    expect(html).toMatch(/url\(#dial-[^)]+\)/);
     wrapper.unmount();
   });
 
@@ -100,6 +113,24 @@ describe('表盘渲染（真实挂载每款表盘）', () => {
 
   it('paper 主题下 chrono 仍正常渲染', () => {
     const wrapper = mount(getFace('chrono').component, {
+      props: { now: NOW, seconds: true, hour24: true, theme: getTheme('paper') },
+    });
+    expect(wrapper.find('svg').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('diver 第三方表盘含表圈刻度/夜光/日期窗结构', () => {
+    const wrapper = mount(getFace('diver').component, { props: props() });
+    const html = wrapper.html();
+    expect(html).toContain('<svg');
+    expect(html).toContain('660ft');
+    expect(html).toContain('SNOOZE');
+    expect(html).toContain('AUTOMATIC');
+    wrapper.unmount();
+  });
+
+  it('paper 主题下 diver 仍正常渲染', () => {
+    const wrapper = mount(getFace('diver').component, {
       props: { now: NOW, seconds: true, hour24: true, theme: getTheme('paper') },
     });
     expect(wrapper.find('svg').exists()).toBe(true);
