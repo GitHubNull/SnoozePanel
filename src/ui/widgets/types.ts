@@ -16,6 +16,7 @@
 import type { Component } from 'vue';
 import type { HassLike } from '@/core/hass';
 import type { Theme } from '../themes';
+import type { PluginMeta } from '../plugins/types';
 
 /** 内容组件入口组件的统一 props */
 export interface WidgetProps {
@@ -35,7 +36,7 @@ export interface WidgetProps {
 export type WidgetSource = 'builtin' | 'thirdparty';
 
 /** 内容组件样式元数据 + 入口组件 */
-export interface WidgetStyleMeta {
+export interface WidgetStyleMeta extends PluginMeta {
   /** 组件类型 id：calendar / date / lunar / weather / text */
   type: string;
   /** 样式 id（目录名，与类型内唯一）：basic / compact / ... */
@@ -49,7 +50,7 @@ export interface WidgetStyleMeta {
 }
 
 /** 纯数据形态的内容组件样式摘要（不含组件引用，可安全跨序列化边界传递） */
-export interface WidgetStyleOption {
+export interface WidgetStyleOption extends PluginMeta {
   /** 组件类型 id */
   type: string;
   /** 样式 id */

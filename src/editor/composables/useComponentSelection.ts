@@ -12,6 +12,9 @@
 import { computed, ref, type ComputedRef, type Ref, type WritableComputedRef } from 'vue';
 import { DEFAULT_LAYOUTS, type ComponentLayout, type SnoozeConfig } from '@/core/types';
 import { attachHexHash } from '@/core/config';
+import { CLOCK_TYPE_SCHEMA, facesVersion, getFace } from '@/ui/faces/registry';
+import { getWidgetSchema, widgetsVersion } from '@/ui/widgets/registry';
+import type { PropertyField } from '@/ui/plugins/types';
 
 /** 组件清单单项 */
 interface ComponentListItem {
@@ -52,6 +55,16 @@ export interface ComponentSelection {
   currentLayout: WritableComputedRef<ComponentLayout>;
   currentColor: WritableComputedRef<string>;
   setCurrentColor: (v: string) => void;
+  /** 主选中组件的属性 schema（表盘取 face.schema；widget 取样式级→类型级） */
+  currentSchema: ComputedRef<PropertyField[]>;
+  /** 主选中组件的 options 透传对象（读写 component.options） */
+  currentOptions: WritableComputedRef<Record<string, unknown>>;
+  /** 主选中组件的顶层字段对象（供 bind:'field' 读写） */
+  currentFields: WritableComputedRef<Record<string, unknown>>;
+  /** 按字段声明读取值（自动区分 bind:'option' / 'field'） */
+  readField: (field: PropertyField) => unknown;
+  /** 按字段声明写回值（自动区分 bind:'option' / 'field'，options 缺省时惰性创建） */
+  writeField: (field: PropertyField, value: unknown) => void;
   /** 主选中内容组件类型（clock 或未选中时为 null；calendar/date/lunar/weather/text 返回类型） */
   currentWidgetType: ComputedRef<string | null>;
   /** 主选中组件的样式 id（读写；clock 对应 clock.style 表盘 id，供展示或忽略） */
@@ -359,6 +372,79 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     }
   }
 
+  /** 主选中组件的底层对象（clock / calendar / date / lunar / weather / text_N） */
+  function currentComponentObject(): Record<string, unknown> | null {
+    const key = selectedComponent.value;
+    if (key.startsWith('text_')) {
+      return (draft.components.texts[Number(key.slice(5))] as unknown as Record<string, unknown>) ?? null;
+    }
+    switch (key) {
+      case 'clock': return draft.components.clock as unknown as Record<string, unknown>;
+      case 'calendar': return draft.components.calendar as unknown as Record<string, unknown>;
+      case 'date': return draft.components.date as unknown as Record<string, unknown>;
+      case 'lunar': return draft.components.lunar as unknown as Record<string, unknown>;
+      case 'weather': return draft.components.weather as unknown as Record<string, unknown>;
+      default: return null;
+    }
+  }
+
+  /** 主选中组件的 options 透传对象（读写 component.options；缺省返回空对象） */
+  const currentOptions = computed<Record<string, unknown>>({
+    get: () => {
+      const opts = currentComponentObject()?.options;
+      return opts && typeof opts === 'object' ? (opts as Record<string, unknown>) : {};
+    },
+    set: (v) => {
+      const obj = currentComponentObject();
+      if (obj) obj.options = { ...v };
+    },
+  });
+
+  /** 主选中组件的顶层字段对象（供 bind:'field' 读写） */
+  const currentFields = computed<Record<string, unknown>>({
+    get: () => currentComponentObject() ?? {},
+    set: (v) => {
+      const obj = currentComponentObject();
+      if (obj) for (const [k, val] of Object.entries(v)) obj[k] = val;
+    },
+  });
+
+  /** 按字段声明读取值（自动区分 bind:'option' / 'field'） */
+  function readField(field: PropertyField): unknown {
+    const target = field.bind === 'field' ? currentFields.value : currentOptions.value;
+    return target[field.key];
+  }
+
+  /** 按字段声明写回值；options 缺省时惰性创建，field 直接写顶层字段 */
+  function writeField(field: PropertyField, value: unknown): void {
+    const obj = currentComponentObject();
+    if (!obj) return;
+    if (field.bind === 'field') {
+      obj[field.key] = value;
+      return;
+    }
+    if (!obj.options || typeof obj.options !== 'object') obj.options = {};
+    (obj.options as Record<string, unknown>)[field.key] = value;
+  }
+
+  /** 主选中组件的属性 schema：表盘取 face.schema（兜底时钟默认），widget 取样式级→类型级 */
+  const currentSchema = computed<PropertyField[]>(() => {
+    // 依赖注册表变更计数：运行时安装 / 卸载插件后即时刷新属性表单
+    void facesVersion.value;
+    void widgetsVersion.value;
+    const key = selectedComponent.value;
+    if (key === 'clock') {
+      const face = getFace(draft.components.clock.style);
+      return face.schema && face.schema.length ? face.schema : CLOCK_TYPE_SCHEMA;
+    }
+    if (key.startsWith('text_')) {
+      const t = draft.components.texts[Number(key.slice(5))];
+      return t ? getWidgetSchema('text', t.style) : [];
+    }
+    const wtype = currentWidgetType.value;
+    return wtype ? getWidgetSchema(wtype, currentStyle.value) : [];
+  });
+
   return {
     selectedKeys,
     selectedComponent,
@@ -380,6 +466,11 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     currentLayout,
     currentColor,
     setCurrentColor,
+    currentSchema,
+    currentOptions,
+    currentFields,
+    readField,
+    writeField,
     currentWidgetType,
     currentStyle,
     updateComponentLayout,

@@ -4,6 +4,28 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.0] - 2026-09-13 01:34:39
+
+### Added
+- 表盘 / 组件市场元数据展示与详情页：全部内置表盘（6 款）与内置样式（5 类型）补齐 `author` / `version` / `summary` / `description` / `usage` / `homepage`；抽取共享组件 `src/editor/market/`（`MarketCard.vue` / `MarketDetail.vue`），`FaceMarketplace` 与 `WidgetMarketplace` 复用；卡片显示作者 + 版本徽标 + 简介，点击进详情页看详细介绍 / 使用指南 / 「使用此表盘·样式」/（第三方）卸载·禁用
+- 元数据驱动属性面板：新增 `PropertyField` 类型（`src/ui/plugins/types.ts`）与 `PropertySchemaForm.vue`（按 `type` 渲染 color/number/boolean/select/text/textarea，按 `group` 分组，写回 `bind` 目标）；`useComponentSelection` 新增 `currentSchema` / `currentOptions` / `currentFields`；`PropertyPanel.vue` 硬编码参数区全部换为 schema 驱动；`CLOCK_TYPE_SCHEMA` / `WIDGET_TYPE_SCHEMA` 提供类型级默认 schema（内置顶层字段用 `bind:'field'`）
+- 预编译插件包（app 式分发）：宿主全局 SDK `src/ui/plugins/sdk.ts`（`window.SnoozePanelPluginAPI`，暴露 Vue 运行时子集 + `core` 纯函数 + `registerFace`/`registerWidget`，`main.ts` 装机）；运行时注册表（`faces/registry.ts` / `widgets/registry.ts` 新增 `registerRuntimeFace/Widget` + `unregister` + `facesVersion`/`widgetsVersion` 响应式版本号，构建期与运行时合并视图）；运行时加载器 `src/runtime/pluginLoader.ts`（目录 `<script src="/local/...">` 与上传 `blob:` 两通道 + 注册结果校验）；前端封装 `src/core/pluginStore.ts`（`listPlugins`/`installPlugin`/`uninstallPlugin`/`setPluginEnabled`）
+- 插件安装弹窗 `src/editor/PluginInstallDialog.vue`：市场工具栏「安装插件」打开，含「HA 本地目录」「文件上传」双 Tab，选择文件时即校验类型 / 大小 / 内容，安装前展示信任提示
+- 插件上传限额与校验纯函数 `src/core/pluginLimits.ts`（前后端同口径）：类型白名单 + 大小上限（.js ≤ 512 KB、plugin.json ≤ 64 KB、单条 ≤ 1 MB）+ 数量上限（≤ 100）+ 内容校验（拒空 / NUL、id 正则、entry 禁路径穿越）
+- 插件构建工具：顶层 `plugin-template/`（示例「像素时钟」）+ 根 `vite.plugin.config.ts`（IIFE + external vue → `SnoozePanelPluginAPI.vue`）+ `scripts/build-plugin.mjs`；`package.json` 新增 `build:plugin` / `build:plugin:examples`
+- 后端插件存储（`custom_components/snoozepanel/`）：WS 命令 `list_plugins`/`install_plugin`/`uninstall_plugin`/`set_plugin_enabled`（`STORAGE_VERSION` 升为 2，存储结构扩为 `{devices, plugins}`），写入前以 voluptuous 严格 schema 做服务端强制限额校验（超限抛错不落盘）；后端仅存储不执行
+- 文档：新增 `doc/开发维护/第三方插件开发/`（`01-插件包格式与SDK` / `02-表盘插件开发` / `03-内容组件插件开发` / `04-安装与信任模型`）；`ARCHITECTURE.md` 新增决策 15（运行时插件 SDK 与预编译插件包）、决策 16（元数据驱动属性面板 + 上传限额前后端双重防线）
+- 测试：新增 `pluginLimits.spec.ts`（限额边界：恰好上限 / 超 1 字节 / 非法后缀 / NUL 等）与 `pluginRegistry.spec.ts`（运行时注册·同 id 覆盖·版本递增·反注册·bind 解析）
+- dev 实测台：`dev/mock.js` 增插件分区与 4 条 WS 处理器（含限额校验）、dev 页面增插件列表与刷新；`tmp/plugins/` 示例产物路径
+
+### Changed
+- `registry.ts`（faces/widgets）改为「构建期 `import.meta.glob` + 运行时注册表」合并视图，市场弹窗 / 下拉 / 预览依赖 `facesVersion`/`widgetsVersion` 响应式刷新；`FaceMeta`/`WidgetStyleMeta` 与纯数据摘要扩元数据 + `schema` 字段
+- `core/types.ts`：`ClockComponent` 增 `options?: Record<string, unknown>`；`core/config.ts` 的 `normalizeConfig` 为 clock 归一化 `options`；`ui/faces/types.ts` 的 `FaceProps` 增 `options`；`ScreensaverApp.vue` 时钟渲染透传 `config.components.clock.options`
+- `ARCHITECTURE.md` 修订决策 10：将「拒绝运行时加载」限定为「拒绝**任意外部 URL**」，明确同源 `/local` 与本地 `blob:` 属允许范围（见决策 15）
+- `TODO.md` P3「屏保皮肤/表盘市场」标注为部分落地（元数据+详情页+插件安装已实现，主题皮肤包与外网仓库下载未落地）
+- `AGENTS.md` / `doc/开发维护/*`：同步新目录（`plugin-template/`、`scripts/`、`src/ui/plugins/`、`editor/market/`）、插件体系与构建命令，第三方表盘/组件开发指南补元数据与 schema 规范
+- `eslint.config.js`：新增 `scripts/**/*.mjs` 的 Node 环境块并纳入 `max-lines` 约束
+
 ## [0.10.0] - 2026-09-13 00:22:00
 
 ### Added

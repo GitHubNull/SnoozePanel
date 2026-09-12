@@ -107,7 +107,8 @@
     .bottom-slim { display: none; align-items: center; justify-content: space-between; gap: 12px; height: 100%; padding: 0 20px; }
     .bottombar.collapsed .bottom-slim { display: flex; }
     .bottombar .log-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-    .bottombar .device-col { width: 320px; flex-shrink: 0; min-height: 0; display: flex; flex-direction: column; }
+    .bottombar .device-col { width: 320px; flex-shrink: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+    .bottombar .mock-section { display: flex; flex-direction: column; min-height: 0; flex: 1; }
     .bottombar .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-shrink: 0; }
     .bottombar .card-head .head-actions { display: flex; align-items: center; gap: 8px; }
     .panel-title { font-size: 14px; font-weight: 600; margin: 0; color: var(--text); }
@@ -245,13 +246,24 @@
           <ul class="log" id="log"></ul>
         </div>
         <div class="device-col">
-          <div class="card-head">
-            <h3 class="panel-title">mock 后端设备</h3>
-            <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
+          <div class="mock-section">
+            <div class="card-head">
+              <h3 class="panel-title">mock 后端设备</h3>
+              <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
+            </div>
+            <ul class="device-list" id="device-list">
+              <li class="dim">尚未保存任何设备</li>
+            </ul>
           </div>
-          <ul class="device-list" id="device-list">
-            <li class="dim">尚未保存任何设备</li>
-          </ul>
+          <div class="mock-section">
+            <div class="card-head">
+              <h3 class="panel-title">mock 后端插件</h3>
+              <button type="button" class="btn ghost small" id="btn-refresh-plugins">刷新</button>
+            </div>
+            <ul class="device-list" id="plugin-list">
+              <li class="dim">尚未安装任何插件</li>
+            </ul>
+          </div>
         </div>
       </div>
       <div class="bottom-slim">

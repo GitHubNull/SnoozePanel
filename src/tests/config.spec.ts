@@ -295,6 +295,19 @@ describe('normalizeConfig 配置规范化', () => {
     expect(c.components.texts[0].options).toEqual({ font_size: 20 });
   });
 
+  it('clock.options 透传 JSON 安全对象（第三方表盘自定义参数）', () => {
+    const c = normalizeConfig({
+      components: { clock: { options: { accent: '#7fd3ff', glow: true, size: 12 } } },
+    });
+    expect(c.components.clock.options).toEqual({ accent: '#7fd3ff', glow: true, size: 12 });
+  });
+
+  it('clock.options 缺省/非对象回退 undefined', () => {
+    expect(normalizeConfig({ components: { clock: {} } }).components.clock.options).toBeUndefined();
+    expect(normalizeConfig({ components: { clock: { options: 'nope' } } }).components.clock.options).toBeUndefined();
+    expect(normalizeConfig({ components: { clock: { options: [1, 2] } } }).components.clock.options).toBeUndefined();
+  });
+
   it('calendar/date/lunar/weather 缺省 style 归一为 basic', () => {
     const c = normalizeConfig({ components: {} });
     expect(c.components.calendar.style).toBe('basic');

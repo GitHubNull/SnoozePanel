@@ -12,6 +12,7 @@ import ToastService from 'primevue/toastservice';
 import Aura from '@primevue/themes/aura';
 import SidebarApp from './SidebarApp.vue';
 import type { HassLike } from '@/core/hass';
+import { loadInstalledPlugins } from '@/runtime/pluginLoader';
 
 export class SnoozePanelSidebarElement extends HTMLElement {
   private app: App | null = null;
@@ -29,6 +30,9 @@ export class SnoozePanelSidebarElement extends HTMLElement {
     if (this.app) return;
     const state = reactive({ hass });
     this.state = state;
+
+    // 启动时加载后端登记的第三方插件（预编译包，同源 /local 或 blob）
+    void loadInstalledPlugins(hass);
 
     this.app = createApp(SidebarApp, { hass: state.hass });
     this.app.use(PrimeVue, {

@@ -339,6 +339,7 @@ onBeforeUnmount(() => {
       :theme="draft.theme"
       :seconds="draft.components.clock.seconds"
       :hour24="draft.components.clock.hour24"
+      :hass="hass"
       @update:model-value="onFaceSelected"
       @close="onMarketplaceClose"
     />
@@ -349,6 +350,7 @@ onBeforeUnmount(() => {
       :type="widgetMarketplaceType"
       :model-value="widgetMarketplaceStyle"
       :theme="draft.theme"
+      :hass="hass"
       @update:model-value="onWidgetStyleSelected"
       @close="onWidgetMarketplaceClose"
     />

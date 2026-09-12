@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { listFaces, listFaceOptions, getFace, hasFace, DEFAULT_FACE_ID } from '../ui/faces/registry';
+import { listFaces, listFaceOptions, getFace, hasFace, DEFAULT_FACE_ID, CLOCK_TYPE_SCHEMA } from '../ui/faces/registry';
 import { getTheme } from '../ui/themes';
 import type { FaceProps } from '../ui/faces/types';
 
@@ -46,13 +46,36 @@ describe('表盘注册表', () => {
     const options = listFaceOptions();
     expect(options.map((o) => o.id)).toEqual(listFaces().map((f) => f.id));
     for (const o of options) {
-      expect(Object.keys(o).sort()).toEqual(['id', 'kind', 'label', 'source']);
       expect(o.label.length).toBeGreaterThan(0);
       expect(['digital', 'analog']).toContain(o.kind);
       expect(['builtin', 'thirdparty']).toContain(o.source);
+      // 纯数据摘要不含组件引用（可安全跨全局 API / 序列化边界）
+      expect('component' in o).toBe(false);
     }
     // 摘要中显式包含第三方表盘 diver
     expect(options.some((o) => o.id === 'diver' && o.source === 'thirdparty')).toBe(true);
+  });
+
+  it('内置 6 款表盘携带完整元数据（作者/版本/简介/详情/指南/主页/协议）', () => {
+    const builtins = listFaceOptions().filter((o) => o.source === 'builtin');
+    expect(builtins).toHaveLength(6);
+    for (const o of builtins) {
+      expect(o.author).toBeTruthy();
+      expect(o.version).toBeTruthy();
+      expect(o.summary).toBeTruthy();
+      expect(o.description).toBeTruthy();
+      expect(o.usage).toBeTruthy();
+      expect(o.homepage).toBeTruthy();
+      expect(o.license).toBeTruthy();
+    }
+  });
+
+  it('时钟类型默认 schema 提供 hour24 / seconds（bind:field）', () => {
+    expect(Array.isArray(CLOCK_TYPE_SCHEMA)).toBe(true);
+    const keys = CLOCK_TYPE_SCHEMA.map((f) => f.key);
+    expect(keys).toContain('hour24');
+    expect(keys).toContain('seconds');
+    for (const f of CLOCK_TYPE_SCHEMA) expect(f.bind).toBe('field');
   });
 
   it('内置表盘 source 均为 builtin', () => {

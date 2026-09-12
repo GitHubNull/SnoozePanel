@@ -13,6 +13,7 @@ import { registerSnoozePanel } from './panel';
 import { registerSnoozePanelEditor } from './editor/editor';
 import { registerSnoozePanelSidebar } from './sidebar/sidebar';
 import { registerSnoozeIconSet } from './runtime/iconset';
+import { installPluginSDK } from './ui/plugins/sdk';
 import { listFaceOptions, type FaceOption } from './ui/faces/registry';
 import { mountFacePreview, type FacePreviewHandle, type FacePreviewOptions } from './runtime/preview';
 import { mountDevicePreview, type DevicePreviewHandle } from './runtime/devicePreview';
@@ -25,6 +26,8 @@ registerSnoozePanelEditor();
 registerSnoozePanelSidebar();
 // 注册自定义图标集：供 HA 侧边栏以 snoozepanel:logo 显示品牌图标
 registerSnoozeIconSet();
+// 安装宿主插件 SDK：供第三方预编译插件包（同源 /local 或 blob）注册表盘/内容组件
+installPluginSDK();
 
 // 向 HA 卡片选择器声明
 interface CustomCardEntry {

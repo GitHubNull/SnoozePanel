@@ -9,7 +9,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { Component } from 'vue';
-import { getFace } from '@/ui/faces/registry';
+import { facesVersion, getFace } from '@/ui/faces/registry';
 import { getTheme } from '@/ui/themes';
 import { Ticker } from '@/runtime/ticker';
 
@@ -30,12 +30,15 @@ const props = withDefaults(
      * 大预览（此时只显示表盘中心区域，超出容器部分被裁剪）。1 = 完整显示全屏画面。
      */
     zoom?: number;
+    /** 表盘自定义配置透传（第三方表盘可读取） */
+    options?: Record<string, unknown>;
   }>(),
   {
     seconds: true,
     hour24: true,
     showBackground: true,
     zoom: 1,
+    options: () => ({}),
   },
 );
 
@@ -44,7 +47,10 @@ const now = ref(new Date());
 /** contain 缩放比：使 100vw×100vh 舞台恰好装进容器 */
 const scale = ref(0);
 
-const faceComponent = computed<Component>(() => getFace(props.faceId).component);
+const faceComponent = computed<Component>(() => {
+  void facesVersion.value; // 依赖注册表变更计数：运行时安装 / 卸载表盘后即时刷新
+  return getFace(props.faceId).component;
+});
 const theme = computed(() => getTheme(props.theme));
 
 /**
@@ -113,6 +119,7 @@ onBeforeUnmount(() => {
         :seconds="seconds"
         :hour24="hour24"
         :theme="theme"
+        :options="options"
       />
     </div>
   </div>

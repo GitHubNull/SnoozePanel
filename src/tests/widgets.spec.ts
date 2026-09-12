@@ -5,9 +5,11 @@ import {
   listWidgetTypes,
   listWidgetStyleOptions,
   getWidget,
+  getWidgetSchema,
   hasWidget,
   isWidgetType,
   WIDGET_TYPE_LABELS,
+  WIDGET_TYPE_SCHEMA,
   DEFAULT_WIDGET_TYPE,
   DEFAULT_WIDGET_STYLE,
 } from '../ui/widgets/registry';
@@ -96,10 +98,47 @@ describe('内容组件注册表（类型/样式两级）', () => {
     const options = listWidgetStyleOptions('date');
     expect(options.map((o) => o.style)).toEqual(listWidgetStyles('date').map((s) => s.style));
     for (const o of options) {
-      expect(Object.keys(o).sort()).toEqual(['label', 'source', 'style', 'type']);
       expect(o.label.length).toBeGreaterThan(0);
       expect(['builtin', 'thirdparty']).toContain(o.source);
+      // 纯数据摘要不含组件引用
+      expect('component' in o).toBe(false);
     }
+  });
+
+  it('内置样式携带完整元数据（作者/版本/简介/详情/指南/主页/协议）', () => {
+    for (const t of TYPES) {
+      const builtins = listWidgetStyleOptions(t).filter((o) => o.source === 'builtin');
+      expect(builtins).toHaveLength(3);
+      for (const o of builtins) {
+        expect(o.author).toBeTruthy();
+        expect(o.version).toBeTruthy();
+        expect(o.summary).toBeTruthy();
+        expect(o.description).toBeTruthy();
+        expect(o.usage).toBeTruthy();
+        expect(o.homepage).toBeTruthy();
+        expect(o.license).toBeTruthy();
+      }
+    }
+  });
+
+  it('类型级默认 schema：getWidgetSchema 回退 WIDGET_TYPE_SCHEMA', () => {
+    for (const t of TYPES) {
+      expect(Array.isArray(WIDGET_TYPE_SCHEMA[t])).toBe(true);
+      expect(WIDGET_TYPE_SCHEMA[t].length).toBeGreaterThan(0);
+      // 内置字段以 bind:'field' 复用组件顶层字段
+      for (const f of WIDGET_TYPE_SCHEMA[t]) {
+        expect(f.key.length).toBeGreaterThan(0);
+        expect(f.bind).toBe('field');
+      }
+      // 未命中样式回退到类型级默认 schema
+      expect(getWidgetSchema(t, 'not-exist')).toEqual(WIDGET_TYPE_SCHEMA[t]);
+    }
+  });
+
+  it('text 类型 schema 含文本内容与显隐开关', () => {
+    const keys = getWidgetSchema('text', 'basic').map((f) => f.key);
+    expect(keys).toContain('content');
+    expect(keys).toContain('show');
   });
 
   it('DEFAULT_WIDGET_STYLE 覆盖全部类型且为 basic', () => {

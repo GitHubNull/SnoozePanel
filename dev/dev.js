@@ -20,7 +20,7 @@
  *   - constants.js  常量
  *   - state.js      页面元素引用 + 可变运行时状态（单一对象承载）
  *   - log.js        分级日志 / Toast / 按钮 busy 态
- *   - mock.js       mock hass + mock 后端 + 设备列表
+ *   - mock.js       mock hass + mock 后端 + 设备/插件列表
  *   - bundle.js     构建产物加载与徽标
  *   - config.js     运行时配置构建与读取
  *   - editor.js     内嵌编辑器创建与配置变更桥接
@@ -30,7 +30,7 @@
  */
 import { el, state } from './state.js';
 import { log, setBusy } from './log.js';
-import { refreshDeviceList } from './mock.js';
+import { refreshDeviceList, refreshPluginList } from './mock.js';
 import { loadBundle } from './bundle.js';
 import { ensureEditor } from './editor.js';
 import {
@@ -64,6 +64,7 @@ function bindEvents() {
     void loadBundle().finally(() => setBusy(el.btnReloadBundle, false));
   });
   el.btnRefreshDevices.addEventListener('click', () => { void refreshDeviceList(); });
+  el.btnRefreshPlugins.addEventListener('click', () => { void refreshPluginList(); });
   el.btnClearLog.addEventListener('click', () => {
     el.logList.innerHTML = '';
     log('info', '日志已清空');
@@ -104,6 +105,7 @@ async function bootstrap() {
   await loadBundle();
   ensureEditor();
   await refreshDeviceList();
+  await refreshPluginList();
   window.setInterval(updateRuntimeStatus, 250);
   updateRuntimeStatus();
 }

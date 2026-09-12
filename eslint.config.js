@@ -82,12 +82,21 @@ export default tseslint.config(
     },
   },
 
+  // ---- 构建脚本：Node 环境 ----
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
+
   // ---- 模块化约束：手写源码单文件 ≤ 520 行 ----
   // 覆盖 src（TS/Vue）、dev 实测页脚本与工程配置文件；超限须以模块化方式拆分。
   {
     files: [
       'src/**/*.{ts,vue}',
       'dev/**/*.js',
+      'scripts/**/*.mjs',
       '*.config.ts',
       'eslint.config.js',
     ],

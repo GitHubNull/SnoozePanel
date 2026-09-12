@@ -4,8 +4,8 @@ import { baseWidthFor, type SnoozeConfig, type ComponentLayout } from '@/core/ty
 import { getTheme } from './themes';
 import { evalTemplate } from '@/core/template';
 import type { HassLike } from '@/core/hass';
-import { getFace } from './faces/registry';
-import { getWidget } from './widgets/registry';
+import { facesVersion, getFace } from './faces/registry';
+import { widgetsVersion, getWidget } from './widgets/registry';
 import ComponentWrapper from './components/ComponentWrapper.vue';
 
 interface SnoozeState {
@@ -54,8 +54,12 @@ const clockTheme = computed(() => {
   return { ...theme.value, text: c, textSecondary: c };
 });
 
-// 按表盘 id 动态解析入口组件（找不到回退默认表盘）
-const faceComponent = computed(() => getFace(props.config.components.clock.style).component);
+// 按表盘 id 动态解析入口组件（找不到回退默认表盘）；
+// 依赖 facesVersion，运行时安装 / 卸载表盘插件后即时刷新画布
+const faceComponent = computed(() => {
+  void facesVersion.value;
+  return getFace(props.config.components.clock.style).component;
+});
 
 // ---- 背景轮播 ----
 const bgIndex = ref(0);
@@ -120,7 +124,7 @@ const placedComponents = computed<PlacedComp[]>(() => {
   const c = props.config.components;
   const list: PlacedComp[] = [];
   if (compVisible('clock', c.clock.show)) {
-    list.push({ key: 'clock', type: 'clock', layout: c.clock.layout, color: c.clock.color, options: {} });
+    list.push({ key: 'clock', type: 'clock', layout: c.clock.layout, color: c.clock.color, options: { ...c.clock.options } });
   }
   if (compVisible('calendar', c.calendar.show)) {
     list.push({
@@ -190,8 +194,10 @@ const renderComponents = computed<RenderedComp[]>(() =>
     .sort((a, b) => a.zIndex - b.zIndex),
 );
 
-/** 按类型+样式解析内容组件入口（style 缺省/未命中回退该类型默认样式） */
+/** 按类型+样式解析内容组件入口（style 缺省/未命中回退该类型默认样式）；
+ *  依赖 widgetsVersion，运行时安装 / 卸载样式插件后即时刷新画布 */
 function widgetComponent(type: string, style?: string): Component {
+  void widgetsVersion.value;
   return getWidget(type, style).component;
 }
 
@@ -264,6 +270,7 @@ const themeVars = computed(() => ({
         :hour24="config.components.clock.hour24"
         :seconds="config.components.clock.seconds"
         :theme="clockTheme"
+        :options="item.options"
       />
       <!-- 内容组件：统一走 widgets 注册表动态挂载（calendar/date/lunar/weather/text） -->
       <component

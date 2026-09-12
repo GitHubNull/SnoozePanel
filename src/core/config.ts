@@ -230,6 +230,7 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
         seconds: bool(clock.seconds, d.components.clock.seconds),
         layout: normalizeLayout(clock.layout, FALLBACK_LAYOUTS.clock),
         color: normalizeColor(clock.color),
+        options: normalizeOptions(clock.options),
       },
       calendar: {
         show: bool(calendar.show, d.components.calendar.show),

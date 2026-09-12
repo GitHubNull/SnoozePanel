@@ -1,21 +1,29 @@
 <script setup lang="ts">
 /**
- * 内容组件样式选择器：按类型列出全部样式并以缩略预览挑选。
+ * 内容组件样式市场：按类型列出全部样式，卡片预览挑选，点击进入详情。
  *
- * 参照 FaceMarketplace 的表盘市场设计语言：
- *   - 顶部 Tab：全部 / 系统内置 / 第三方
- *   - 卡片用 WidgetPreview 实时预览；当前选中样式高亮 + 「使用中」标签
- *   - 点击卡片 emit update:modelValue(style) 后延迟 180ms 关闭（选中动画可见）
+ * 参照表盘市场设计语言：
+ *   - 顶部 Tab：全部 / 系统内置 / 第三方；顶部「安装插件」入口
+ *   - 卡片用 WidgetPreview 实时预览，详情页展示作者 / 版本 / 简介 / 使用指南
+ *   - 第三方已安装项可启用 / 停用 / 卸载；经 widgetsVersion 响应式刷新
  */
 import { computed, ref } from 'vue';
-import { listWidgetStyleOptions, WIDGET_TYPE_LABELS } from '@/ui/widgets/registry';
+import { listWidgetStyleOptions, WIDGET_TYPE_LABELS, widgetsVersion } from '@/ui/widgets/registry';
+import type { WidgetStyleOption } from '@/ui/widgets/types';
 import WidgetPreview from '@/ui/components/WidgetPreview.vue';
+import MarketCard from './market/MarketCard.vue';
+import MarketDetail from './market/MarketDetail.vue';
+import PluginInstallDialog from './PluginInstallDialog.vue';
+import { usePluginInstall } from './market/usePluginInstall';
+import type { MarketEntry } from './market/types';
+import type { HassLike } from '@/core/hass';
 import Dialog from 'primevue/dialog';
 import Tabs from 'primevue/tabs';
 import TabList from 'primevue/tablist';
 import Tab from 'primevue/tab';
 import TabPanels from 'primevue/tabpanels';
 import TabPanel from 'primevue/tabpanel';
+import Button from 'primevue/button';
 
 const props = defineProps<{
   /** 内容组件类型 id：calendar / date / lunar / weather / text */
@@ -24,6 +32,8 @@ const props = defineProps<{
   modelValue: string;
   /** 主题（预览配色） */
   theme: 'midnight' | 'paper';
+  /** hass（第三方插件安装 / 卸载用） */
+  hass: HassLike | null;
 }>();
 
 const emit = defineEmits<{
@@ -32,25 +42,71 @@ const emit = defineEmits<{
 }>();
 
 const visible = ref(true);
+const activeTab = ref<'all' | 'builtin' | 'thirdparty'>('all');
+const detailKey = ref('');
 
-const allStyles = listWidgetStyleOptions(props.type);
-const builtinStyles = computed(() => allStyles.filter((s) => s.source === 'builtin'));
-const thirdpartyStyles = computed(() => allStyles.filter((s) => s.source === 'thirdparty'));
+const install = usePluginInstall(() => props.hass);
+void install.refresh();
 
 /** 弹窗标题：选择{类型中文名}样式 */
 const dialogTitle = computed(() => `选择${WIDGET_TYPE_LABELS[props.type] ?? props.type}样式`);
 
-function sourceLabel(source: 'builtin' | 'thirdparty'): string {
-  return source === 'builtin' ? '系统内置' : '第三方';
+/** 样式选项 → 统一市场条目 */
+function toEntry(s: WidgetStyleOption): MarketEntry {
+  const key = `${s.type}/${s.style}`;
+  const inst = install.installed.value.find((p) => `${p.type}/${p.style}` === key);
+  return {
+    key,
+    value: s.style,
+    label: s.label,
+    source: s.source,
+    kindLabel: WIDGET_TYPE_LABELS[s.type],
+    type: s.type,
+    style: s.style,
+    inUse: s.style === props.modelValue,
+    summary: s.summary,
+    author: s.author,
+    version: s.version,
+    description: s.description,
+    usage: s.usage,
+    homepage: s.homepage,
+    license: s.license,
+    installed: s.source === 'thirdparty' ? s.installed ?? Boolean(inst) : false,
+    enabled: inst?.enabled,
+  };
 }
 
-function selectStyle(style: string): void {
-  emit('update:modelValue', style);
-  // 延迟关闭让选中动画可见
+/** 当前类型的全部样式条目（依赖 widgetsVersion 以响应运行时增删） */
+const allStyles = computed<MarketEntry[]>(() => {
+  void widgetsVersion.value;
+  return listWidgetStyleOptions(props.type).map(toEntry);
+});
+
+const builtinStyles = computed(() => allStyles.value.filter((s) => s.source === 'builtin'));
+const thirdpartyStyles = computed(() => allStyles.value.filter((s) => s.source === 'thirdparty'));
+const detailEntry = computed(() => allStyles.value.find((s) => s.key === detailKey.value) ?? null);
+
+function openDetail(entry: MarketEntry): void {
+  detailKey.value = entry.key;
+}
+function backToList(): void {
+  detailKey.value = '';
+}
+
+function selectStyle(entry: MarketEntry): void {
+  emit('update:modelValue', entry.value);
   setTimeout(() => {
     visible.value = false;
     emit('close');
   }, 180);
+}
+
+async function onUninstall(entry: MarketEntry): Promise<void> {
+  await install.uninstallEntry(entry);
+  detailKey.value = '';
+}
+async function onSetEnabled(entry: MarketEntry, enabled: boolean): Promise<void> {
+  await install.setEntryEnabled(entry, enabled);
 }
 
 function onHide(): void {
@@ -62,94 +118,90 @@ function onHide(): void {
   <Dialog
     v-model:visible="visible"
     modal
-    :header="dialogTitle"
+    :header="detailEntry ? '样式详情' : dialogTitle"
     :style="{ width: '92vw', maxWidth: '860px' }"
     :content-style="{ padding: '0' }"
     class="widget-marketplace"
     @hide="onHide"
   >
-    <Tabs value="all" class="market-tabs">
-      <TabList>
-        <Tab value="all">全部（{{ allStyles.length }}）</Tab>
-        <Tab value="builtin">系统内置（{{ builtinStyles.length }}）</Tab>
-        <Tab value="thirdparty">第三方（{{ thirdpartyStyles.length }}）</Tab>
-      </TabList>
-      <TabPanels>
-        <TabPanel value="all">
-          <div class="widget-grid">
-            <button
-              v-for="s in allStyles"
-              :key="s.style"
-              type="button"
-              class="widget-card"
-              :class="{ active: s.style === modelValue }"
-              @click="selectStyle(s.style)"
-            >
-              <div class="widget-preview-wrap">
-                <WidgetPreview :type="type" :style="s.style" :theme="theme" />
-              </div>
-              <div class="widget-info">
-                <span class="widget-name">{{ s.label }}</span>
-                <span class="badge source" :class="s.source">{{ sourceLabel(s.source) }}</span>
-              </div>
-              <span v-if="s.style === modelValue" class="in-use">使用中</span>
-            </button>
-          </div>
-        </TabPanel>
-        <TabPanel value="builtin">
-          <div class="widget-grid">
-            <button
-              v-for="s in builtinStyles"
-              :key="s.style"
-              type="button"
-              class="widget-card"
-              :class="{ active: s.style === modelValue }"
-              @click="selectStyle(s.style)"
-            >
-              <div class="widget-preview-wrap">
-                <WidgetPreview :type="type" :style="s.style" :theme="theme" />
-              </div>
-              <div class="widget-info">
-                <span class="widget-name">{{ s.label }}</span>
-                <span class="badge source builtin">系统内置</span>
-              </div>
-              <span v-if="s.style === modelValue" class="in-use">使用中</span>
-            </button>
-          </div>
-        </TabPanel>
-        <TabPanel value="thirdparty">
-          <div v-if="thirdpartyStyles.length === 0" class="empty-tip">
-            <p>暂无第三方样式</p>
-            <p class="sub">
-              将样式目录放入 <code>src/ui/widgets/thirdparty/&lt;type&gt;/&lt;style&gt;/</code> 后重新构建即可
-            </p>
-          </div>
-          <div v-else class="widget-grid">
-            <button
-              v-for="s in thirdpartyStyles"
-              :key="s.style"
-              type="button"
-              class="widget-card"
-              :class="{ active: s.style === modelValue }"
-              @click="selectStyle(s.style)"
-            >
-              <div class="widget-preview-wrap">
-                <WidgetPreview :type="type" :style="s.style" :theme="theme" />
-              </div>
-              <div class="widget-info">
-                <span class="widget-name">{{ s.label }}</span>
-                <span class="badge source thirdparty">第三方</span>
-              </div>
-              <span v-if="s.style === modelValue" class="in-use">使用中</span>
-            </button>
-          </div>
-        </TabPanel>
-      </TabPanels>
-    </Tabs>
+    <!-- 详情视图 -->
+    <MarketDetail
+      v-if="detailEntry"
+      :entry="detailEntry"
+      use-label="使用此样式"
+      @back="backToList"
+      @use="selectStyle(detailEntry)"
+      @uninstall="onUninstall(detailEntry)"
+      @set-enabled="onSetEnabled(detailEntry, $event)"
+    >
+      <template #preview>
+        <WidgetPreview :type="detailEntry.type ?? type" :style="detailEntry.style ?? detailEntry.value" :theme="theme" />
+      </template>
+    </MarketDetail>
+
+    <!-- 列表视图 -->
+    <template v-else>
+      <div class="market-toolbar">
+        <Button label="安装插件" icon="pi pi-plus" size="small" text @click="install.openInstall()" />
+      </div>
+      <Tabs v-model:value="activeTab" class="market-tabs">
+        <TabList>
+          <Tab value="all">全部（{{ allStyles.length }}）</Tab>
+          <Tab value="builtin">系统内置（{{ builtinStyles.length }}）</Tab>
+          <Tab value="thirdparty">第三方（{{ thirdpartyStyles.length }}）</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel value="all">
+            <div class="widget-grid">
+              <MarketCard v-for="s in allStyles" :key="s.key" :entry="s" @open="openDetail(s)">
+                <template #preview>
+                  <WidgetPreview :type="type" :style="s.style ?? s.value" :theme="theme" />
+                </template>
+              </MarketCard>
+            </div>
+          </TabPanel>
+          <TabPanel value="builtin">
+            <div class="widget-grid">
+              <MarketCard v-for="s in builtinStyles" :key="s.key" :entry="s" @open="openDetail(s)">
+                <template #preview>
+                  <WidgetPreview :type="type" :style="s.style ?? s.value" :theme="theme" />
+                </template>
+              </MarketCard>
+            </div>
+          </TabPanel>
+          <TabPanel value="thirdparty">
+            <div v-if="thirdpartyStyles.length === 0" class="empty-tip">
+              <p>暂无第三方样式</p>
+              <p class="sub">点击上方「安装插件」，从 HA 本地目录或上传插件包安装</p>
+            </div>
+            <div v-else class="widget-grid">
+              <MarketCard v-for="s in thirdpartyStyles" :key="s.key" :entry="s" @open="openDetail(s)">
+                <template #preview>
+                  <WidgetPreview :type="type" :style="s.style ?? s.value" :theme="theme" />
+                </template>
+              </MarketCard>
+            </div>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
+    </template>
+
+    <!-- 安装弹窗 -->
+    <PluginInstallDialog
+      v-if="install.installVisible.value"
+      :hass="hass"
+      @close="install.closeInstall()"
+      @installed="install.refresh()"
+    />
   </Dialog>
 </template>
 
 <style scoped>
+.market-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 16px 0;
+}
 .widget-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -158,112 +210,18 @@ function onHide(): void {
   max-height: 60vh;
   overflow-y: auto;
 }
-
-.widget-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border: 2px solid var(--sp-chrome-border, #494e52);
-  border-radius: 14px;
-  background: var(--sp-chrome-bg-2, #3f4448);
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-  text-align: left;
-  padding: 0;
-  font-family: inherit;
-}
-
-.widget-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--primary-color, #5ea0ff);
-  box-shadow: 0 8px 24px rgba(94, 160, 255, 0.18);
-}
-
-.widget-card.active {
-  border-color: var(--primary-color, #5ea0ff);
-  box-shadow: 0 0 0 3px rgba(94, 160, 255, 0.25);
-}
-
-.widget-preview-wrap {
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  background: #000;
-  overflow: hidden;
-}
-
-.widget-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px 14px;
-}
-
-.widget-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--sp-chrome-text, #d8dcdf);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.badge {
-  font-size: 11px;
-  line-height: 1;
-  padding: 4px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-  flex: none;
-}
-
-.badge.source.builtin {
-  color: #4fc07d;
-  background: rgba(79, 192, 125, 0.14);
-}
-
-.badge.source.thirdparty {
-  color: #e8b45a;
-  background: rgba(232, 180, 90, 0.14);
-}
-
-.in-use {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--primary-color, #5ea0ff);
-  padding: 4px 10px;
-  border-radius: 999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
 .empty-tip {
   padding: 48px 24px;
   text-align: center;
   color: var(--secondary-text-color, #8b95a8);
 }
-
 .empty-tip p {
   margin: 0 0 8px;
   font-size: 15px;
 }
-
 .empty-tip .sub {
   font-size: 13px;
   opacity: 0.75;
-}
-
-.empty-tip code {
-  font-family: monospace;
-  background: rgba(94, 160, 255, 0.12);
-  color: var(--primary-color, #5ea0ff);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
 }
 </style>
 
@@ -275,23 +233,5 @@ function onHide(): void {
 .widget-marketplace .p-tablist {
   background: var(--card-background-color, #10141d);
   border-bottom: 1px solid var(--divider-color, #2a3346);
-}
-/* 确保 Dialog 在视口内固定定位，不随页面滚动 */
-.p-dialog-mask {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  z-index: 99998 !important;
-}
-.p-dialog-mask .p-dialog {
-  position: relative !important;
-  margin: 0 !important;
-  max-height: 90vh !important;
-  z-index: 99999 !important;
 }
 </style>

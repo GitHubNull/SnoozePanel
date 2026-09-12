@@ -14,6 +14,7 @@ import type { HassLike } from '@/core/hass';
 import { loadDeviceConfig, mergeConfig } from '@/core/store';
 import type { SnoozeConfig } from '@/core/types';
 import { SnoozeController } from '@/runtime/controller';
+import { loadInstalledPlugins } from '@/runtime/pluginLoader';
 
 export class SnoozePanelElement extends HTMLElement {
   private controller: SnoozeController | null = null;
@@ -22,6 +23,8 @@ export class SnoozePanelElement extends HTMLElement {
   private deviceId = '';
   /** 已加载的设备级配置覆盖（热更新时复用，避免重复请求后端） */
   private deviceOverride: Partial<SnoozeConfig> | null = null;
+  /** 已安装插件是否已加载（本元素生命周期内仅加载一次） */
+  private pluginsLoaded = false;
 
   /** HA 调用 setConfig 传入卡片配置（含视图上下文由 lovelace 注入） */
   setConfig(config: Record<string, unknown>): void {
@@ -83,6 +86,12 @@ export class SnoozePanelElement extends HTMLElement {
 
     this.deviceId = resolveDeviceId();
     if (!isDeviceAllowed(this.deviceId, viewConfig.devices)) return; // 设备不在白名单 → 不启用
+
+    // 首次进入时加载后端登记的第三方插件（预编译包，同源 /local 或 blob）
+    if (!this.pluginsLoaded && this._hass) {
+      this.pluginsLoaded = true;
+      void loadInstalledPlugins(this._hass);
+    }
 
     // 异步加载设备级覆盖（后端 .storage/）并合并，再启动控制器；
     // 后端不可用时 loadDeviceConfig 返回 null，仅用视图 YAML。

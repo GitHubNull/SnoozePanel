@@ -25,28 +25,35 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   ├── align.ts        # alignDeltas / distributeDeltas：对齐/分布位移纯函数
 │   │   ├── layers.ts       # reorderLayers：图层置顶/置底/上移/下移 + z 规范化
 │   │   ├── text.ts         # 实体占位符替换
+│   │   ├── pluginTypes.ts  # 插件安装纯数据契约（Manifest / Record，无 vue/DOM 依赖）
+│   │   ├── pluginLimits.ts # 插件上传限额与校验纯函数（前后端同口径）
+│   │   ├── pluginStore.ts  # 插件安装记录读写封装（hass.callWS 走后端 .storage）
 │   │   └── hass.ts         # HassEntity 等 HA 类型
 │   ├── runtime/            # 运行时层（DOM/定时器/事件）
 │   │   ├── controller.ts   # SnoozeController：激活/退出状态机、闲置计时、冷却
 │   │   ├── mount.ts        # mountScreensaver：Vue 子应用挂载/卸载
 │   │   ├── preview.ts      # mountFacePreview：表盘缩略预览挂载封装（供 dev 页跨 IIFE 调用）
+│   │   ├── pluginLoader.ts # 运行时插件加载器（注入 <script> / blob: + 校验注册结果）
 │   │   └── ticker.ts       # Ticker：1s tick，后台标签页暂停
 │   ├── ui/                 # 屏保 UI
 │   │   ├── ScreensaverApp.vue
 │   │   ├── components/     # ComponentWrapper / FacePreview（缩略预览摄像机）/ DevicePreview / ScreenRulers
 │   │   ├── widgets/        # 内容组件框架：registry.ts（import.meta.glob 构建时收集）+ types.ts + 类型/样式两级目录（<type>/<style>/…）+ thirdparty/
-│   │   ├── faces/          # 表盘框架：registry.ts（import.meta.glob 构建时收集）+ types.ts + 各表盘目录（digital/ring/analog/chrono/minimal/orbit）
+│   │   ├── faces/          # 表盘框架：registry.ts（构建期 import.meta.glob 收集 + 运行时注册表合并视图 + facesVersion）+ types.ts + 各表盘目录（digital/ring/analog/chrono/minimal/orbit）
+│   │   ├── plugins/        # 插件体系：sdk.ts（window.SnoozePanelPluginAPI 全局宿主 SDK）+ types.ts（PropertyField / PluginMeta / *PluginMeta）
 │   │   └── themes.ts       # midnight / paper 两套主题
 │   ├── editor/             # GUI 编辑器
 │   │   ├── editor.ts       # SnoozePanelEditorElement（HA card editor 协议）
 │   │   ├── EditorApp.vue   # 编辑器根：瘦编排层（组织五区子组件 + TopToolbar + Toast + 表盘市场，provide 四份共享上下文）
 │   │   ├── editorContext.ts # 编辑器共享上下文注入键与 helper（草稿 / UI 偏好 / 选中态 / 工具条动作）
 │   │   ├── editor.css      # 编辑器五区共享样式（各子组件以 <style scoped src> 复用）
+│   │   ├── PluginInstallDialog.vue # 插件安装弹窗（HA 本地目录 / 文件上传双通道 + 限额校验 + 信任提示）
+│   │   ├── market/         # 市场共享组件（MarketCard / MarketDetail，表盘与组件市场复用）
 │   │   ├── components/     # 五区子组件（EditorMenuBar / TopToolbar / CategoryPanel / EditorCanvas / PropertyPanel / StatusBar）
 │   │   ├── composables/    # 组合式函数（useEditorDraft / useComponentSelection / useAlignmentActions / useLayerActions / useEditorShortcuts / useDeviceSave）
 │   │   ├── useEditorLayout.ts # 编辑器 UI 偏好：面板宽度/收起 + 画布网格/磁吸（localStorage，仅 UI）
 │   │   ├── panels/         # 菜单栏全局配置浮层（Basic / Appearance / Conditions / Device / Advanced）
-│   │   └── forms/          # 复用分区表单（EntityConditionsForm）
+│   │   └── forms/          # 复用分区表单（EntityConditionsForm / PropertySchemaForm 元数据驱动属性表单）
 │   └── tests/              # Vitest 单测（*.spec.ts）
 ├── dev/                    # ★ 本地 mock 实测页（必须入库，供他人测试/核对/验证）
 │   ├── index.html          # 页面结构 + 内联样式（顶栏可收起 / 背板舞台内嵌插件 / 底栏可拖高可收起；内置 mock hass，动态加载 tmp/dist 产物）
@@ -61,16 +68,24 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   ├── editor.js           # 内嵌编辑器创建与 config-changed 桥接
 │   ├── runtime.js          # 运行时挂载/触发/退出/卸载 + 状态徽标
 │   └── layout.js           # 实测台 UI 布局偏好（顶栏收起 / 底栏高度·收起，localStorage）
+├── plugin-template/        # ★ 第三方插件工程模板（示例「像素时钟」，可整目录拷贝起步）
+│   ├── src/index.ts        # 示例插件（仅依赖宿主 SDK，不打包 Vue）
+│   ├── plugin.json         # 插件清单
+│   └── README.md           # 使用说明
+├── scripts/                # 构建辅助脚本（Node ESM）
+│   └── build-plugin.mjs    # 插件包构建脚本（build:plugin / build:plugin:examples）
 ├── doc/                    # 文档（见下方文档体系）
 ├── img/                    # 截图（README 引用）
 ├── tmp/                    # 唯一临时目录：构建产物/验证截图/一次性脚本/垃圾数据/敏感文件（整体 .gitignore）
 │   ├── dist/snoozepanel.js # 构建产物（单文件 IIFE）
+│   ├── plugins/            # 示例插件编译产物（不入库）
 │   ├── tools/              # 一次性只读探测脚本（不入库）
 │   ├── ha_inventory/       # 设备清单导出（不入库）
 │   └── HA_info.txt         # 生产令牌等敏感信息（不入库）
 ├── package.json            # 工程清单
 ├── pnpm-lock.yaml          # 依赖锁文件
-├── vite.config.ts          # Vite lib 构建配置
+├── vite.config.ts          # Vite lib 构建配置（主产物）
+├── vite.plugin.config.ts   # Vite 插件包构建配置（IIFE + external vue）
 ├── vitest.config.ts        # 测试配置
 ├── tsconfig.json           # TypeScript 配置
 ├── node_modules/           # pnpm 依赖（实体安装）
@@ -86,6 +101,8 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 ```bash
 pnpm install          # 安装依赖（首次）
 pnpm build            # 构建 → tmp/dist/snoozepanel.js
+pnpm build:plugin <dir> [out]  # 编译单个插件工程 → <out>/<id>/（index.js + plugin.json）
+pnpm build:plugin:examples     # 编译仓内示例 → tmp/plugins/
 pnpm test             # 跑全部单测（Vitest）
 pnpm test:watch       # watch 模式
 pnpm typecheck        # vue-tsc 全量类型检查（src）
@@ -106,17 +123,19 @@ python -m http.server 8765   # 或任意静态服务器
 2. **`dev/` 是入库测试基建**：mock 实测页（`dev/index.html`）供他人测试/核对/验证，**必须入库**，严禁放入 `tmp/` 或被 `.gitignore` 忽略。
 3. **`tmp/` 是唯一临时目录**：构建产物（`tmp/dist/`）、验证截图、一次性辅助脚本、垃圾/测试数据、敏感文件放 `tmp/`，整体已被 `.gitignore` 排除。
 4. **`src/` 只放入库源码**：`.ts` / `.vue`，禁止放测试快照、临时脚本、构建产物。
+5. **`plugin-template/` 与 `scripts/` 也是入库内容**：插件模板工程与构建脚本随仓库分发，**必须入库**；插件编译产物放 `tmp/plugins/`（不入库）。
 
 ## 安全红线（违反即返工）
 
 - **令牌/密钥绝不入库**：`tmp/HA_info.txt`（生产令牌）、`tmp/HA_PROJECT_NOTES.md`（SSH 密钥路径+内网拓扑）、`tmp/tools/`、`tmp/ha_inventory/` 已在 `.gitignore`，严禁 `git add -f` 强制添加。
 - **生产 HA 只读探测**：对生产环境（http://192.168.31.205:8123）只允许只读 API 调用；如需写入实测，必须在专用 `snoozepanel-test` 视图，完毕立即删除恢复原状。
-- **不收集数据**：插件代码中严禁出现任何遥测、上报、外发请求。
+- **不收集数据**：插件代码中严禁出现任何遥测、上报、外发请求；运行时插件仅允许从同源 `/local` 目录或本地 `blob:` 加载，**严禁加载任意外网 URL**。
 
 ## 架构要点（改动前必读）
 
 - **配置持久化必须依赖 HA 后端**：视图级配置随 lovelace 存储持久化；**设备级配置记录（每台平板的独立设置）必须落盘到 HA 后端**（custom component + `.storage/`），严禁仅用浏览器 `localStorage` 承载配置——HA 重启、清缓存、换 App 都会丢。当前 device id 用 localStorage 仅作临时标识，配置持久化后端为 P0 待办（见 `doc/TODO.md`）。
 - **不做的事**：不引入遥测/上报/外发请求；不侵入 HA 现有生产视图与实体。
+- **插件体系（运行时）**：两条扩展路径——（1）**源码目录**（构建期，如 `thirdparty/<id>/`，需 `pnpm build`）；（2）**预编译插件包**（运行时，`<id>/plugin.json` + `index.js`，经市场「安装插件」导入，无需重建宿主）。插件复用宿主全局 `window.SnoozePanelPluginAPI`（含 Vue 运行时与 `registerFace`/`registerWidget`）；仅接受**同源 `/local` 目录与本地 `blob:`** 两通道，**不加载任意外网 URL**。上传限额前后端双重校验（单一常量源 `core/pluginLimits.ts` ↔ 后端 `const.py`）。详见 `doc/ARCHITECTURE.md` 决策 15/16 与 `doc/开发维护/第三方插件开发/`。
 
 ## 代码规范
 
@@ -147,7 +166,12 @@ doc/
     │   ├── 01-环境搭建.md
     │   ├── 02-代码结构导读.md
     │   └── 03-发布与共建.md
-    ├── 第三方表盘开发指南.md   # 表盘（时钟）开发契约
+    ├── 第三方表盘开发指南.md   # 表盘（时钟）开发契约（源码目录接入）
+    ├── 第三方插件开发/         # 预编译插件包（运行时安装）：格式/SDK/开发/信任模型
+    │   ├── 01-插件包格式与SDK.md
+    │   ├── 02-表盘插件开发.md
+    │   ├── 03-内容组件插件开发.md
+    │   └── 04-安装与信任模型.md
     ├── 组件开发指南/           # 内容组件（widget）分级教程 + 接口规范
     │   ├── 01-基础篇/
     │   │   ├── 01-Hello-World组件.md

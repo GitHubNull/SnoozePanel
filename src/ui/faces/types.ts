@@ -16,4 +16,6 @@ export interface FaceProps {
   hour24: boolean;
   /** 当前主题（取色/字重/字体族） */
   theme: Theme;
+  /** 表盘自定义配置（内置字段 + options 透传合并；第三方表盘可在此读取自定义参数） */
+  options?: Record<string, unknown>;
 }

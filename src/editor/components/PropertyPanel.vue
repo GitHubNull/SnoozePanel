@@ -2,25 +2,26 @@
 /**
  * 编辑器五区之四：组件属性编辑器（右，可拖宽 / 收起 / 恢复默认宽度）。
  *
- * 按选中组件渲染时钟 / 日历 / 农历 / 天气 / 单条文本属性、通用布局（X/Y/宽/高）
- * 与字体颜色；时钟另有表盘选择卡片（点击进入表盘市场）。
+ * 主体为「元数据驱动」：选中组件后从其 schema（face.meta / widget.meta / 类型级默认）
+ * 动态渲染属性控件（PropertySchemaForm），读写经 useComponentSelection 的
+ * readField / writeField（自动区分 bind:'option'/'field'）。
+ * 另保留通用「布局」「字体颜色」两区，以及表盘 / 样式选择卡片（点击进入市场）。
  * 编辑草稿与选中态经 provide/inject 获取（共享 reactive，就地写回）；仅面板开合等
  * 纯 UI 动作经 emit 回传 EditorApp。
  */
 import { computed } from 'vue';
-import { listFaceOptions } from '@/ui/faces/registry';
-import { listWidgetStyleOptions } from '@/ui/widgets/registry';
+import { facesVersion, getFace } from '@/ui/faces/registry';
+import { listWidgetStyleOptions, widgetsVersion } from '@/ui/widgets/registry';
 import FacePreview from '@/ui/components/FacePreview.vue';
 import WidgetPreview from '@/ui/components/WidgetPreview.vue';
 import { injectEditorDraft, injectEditorSelection } from '../editorContext';
+import PropertySchemaForm from '../forms/PropertySchemaForm.vue';
 import Button from 'primevue/button';
-import ToggleSwitch from 'primevue/toggleswitch';
 import InputNumber from 'primevue/inputnumber';
 import InputText from 'primevue/inputtext';
-import Select from 'primevue/select';
 import ColorPicker from 'primevue/colorpicker';
 
-defineProps<{
+const props = defineProps<{
   /** 天气实体候选项（weather.*） */
   weatherEntities: string[];
   /** 是否收起（滑轨态） */
@@ -48,27 +49,30 @@ const {
   currentColor,
   currentWidgetType,
   currentStyle,
+  currentSchema,
+  readField,
+  writeField,
   selectedTextIndex,
-  selectedTextContent,
-  selectedTextShow,
   setCurrentColor,
   removeSelectedText,
 } = injectEditorSelection();
 
-// 表盘选项：从注册表动态生成（label 中文名，value 表盘 id）
-const CLOCK_STYLES = listFaceOptions().map((f) => ({ label: f.label, value: f.id }));
-
-/** 表盘 id → 中文名 */
+/** 表盘 id → 中文名；未注册时与渲染层一致回退默认表盘名（依赖 facesVersion 响应运行时增删） */
 function faceLabel(id: string): string {
-  return CLOCK_STYLES.find((f) => f.value === id)?.label ?? id;
+  void facesVersion.value;
+  return getFace(id).label;
 }
 
-/** 当前内容组件样式的中文名（用于样式选择卡片） */
+/** 当前内容组件样式的中文名（用于样式选择卡片）；依赖 widgetsVersion 响应运行时增删 */
 const currentWidgetStyleLabel = computed(() => {
+  void widgetsVersion.value;
   const t = currentWidgetType.value;
   if (!t) return '';
   return listWidgetStyleOptions(t).find((s) => s.style === currentStyle.value)?.label ?? currentStyle.value;
 });
+
+/** 文本字段候选：天气实体（供 schema 中 entity 字段渲染为可编辑下拉） */
+const fieldSuggestions = computed<Record<string, string[]>>(() => ({ entity: props.weatherEntities }));
 
 function onOpenMarketplace(): void {
   emit('open-marketplace');
@@ -128,145 +132,46 @@ function onResizeStart(ev: PointerEvent): void {
           已选 {{ selectedCount }} 项 · 当前编辑「{{ selectedLabel }}」，其余可用于对齐 / 图层
         </div>
 
-        <!-- 时钟属性：表盘卡片 + 时间显示 -->
-        <template v-if="selectedComponent === 'clock'">
-          <div class="face-selector-card" @click="onOpenMarketplace">
-            <div class="face-selector-preview">
-              <FacePreview
-                :face-id="draft.components.clock.style"
-                :theme="draft.theme"
-                :seconds="draft.components.clock.seconds"
-                :hour24="draft.components.clock.hour24"
-                :zoom="1.2"
-              />
-            </div>
-            <div class="face-selector-info">
-              <span class="face-selector-name">{{ faceLabel(draft.components.clock.style) }}</span>
-              <span class="face-selector-action">点击进入表盘市场</span>
-            </div>
-          </div>
-          <div class="inline-row"><label>24 小时制</label><ToggleSwitch v-model="draft.components.clock.hour24" /></div>
-          <div class="inline-row"><label>显示秒</label><ToggleSwitch v-model="draft.components.clock.seconds" /></div>
-        </template>
-
-        <!-- 日历属性 -->
-        <template v-if="selectedComponent === 'calendar'">
-          <!-- 样式选择卡片（内容组件样式选择器） -->
-          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
-            <div class="face-selector-preview">
-              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
-            </div>
-            <div class="face-selector-info">
-              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
-              <span class="face-selector-action">点击进入样式选择</span>
-            </div>
-          </div>
-          <div class="field">
-            <label>周起始日</label>
-            <Select
-              v-model="draft.components.calendar.week_start"
-              :options="[{ label: '周一', value: 1 }, { label: '周日', value: 0 }]"
-              option-label="label"
-              option-value="value"
-              class="w-full"
+        <!-- 表盘选择卡片（点击进入表盘市场） -->
+        <div v-if="selectedComponent === 'clock'" class="face-selector-card" @click="onOpenMarketplace">
+          <div class="face-selector-preview">
+            <FacePreview
+              :face-id="draft.components.clock.style"
+              :theme="draft.theme"
+              :seconds="draft.components.clock.seconds"
+              :hour24="draft.components.clock.hour24"
+              :zoom="1.2"
             />
           </div>
-          <div class="field">
-            <label>日期格式模板</label>
-            <InputText v-model="draft.components.calendar.format" class="w-full" placeholder="M月D日 dddd" />
-            <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
+          <div class="face-selector-info">
+            <span class="face-selector-name">{{ faceLabel(draft.components.clock.style) }}</span>
+            <span class="face-selector-action">点击进入表盘市场</span>
           </div>
-          <div class="inline-row"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
-        </template>
+        </div>
 
-        <!-- 日期属性（ISO 8601 占位符格式模板） -->
-        <template v-if="selectedComponent === 'date'">
-          <!-- 样式选择卡片（内容组件样式选择器） -->
-          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
-            <div class="face-selector-preview">
-              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
-            </div>
-            <div class="face-selector-info">
-              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
-              <span class="face-selector-action">点击进入样式选择</span>
-            </div>
+        <!-- 内容组件样式选择卡片（点击进入样式选择） -->
+        <div v-else-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
+          <div class="face-selector-preview">
+            <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
           </div>
-          <div class="field">
-            <label>日期格式模板</label>
-            <InputText v-model="draft.components.date.format" class="w-full" placeholder="YYYY年MM月DD日 dddd" />
-            <small>占位符：YYYY 四位年 / YY 两位年 / MM 两位月 / M 月 / DD 两位日 / D 日 / dddd 星期全称 / ddd 星期简称</small>
+          <div class="face-selector-info">
+            <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
+            <span class="face-selector-action">点击进入样式选择</span>
           </div>
-        </template>
+        </div>
 
-        <!-- 农历属性 -->
-        <template v-if="selectedComponent === 'lunar'">
-          <!-- 样式选择卡片（内容组件样式选择器） -->
-          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
-            <div class="face-selector-preview">
-              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
-            </div>
-            <div class="face-selector-info">
-              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
-              <span class="face-selector-action">点击进入样式选择</span>
-            </div>
-          </div>
-          <div class="field">
-            <label>格式模板</label>
-            <InputText v-model="draft.components.lunar.format" class="w-full" placeholder="{lunar_month}{lunar_day}" />
-            <small>占位符：{'{lunar_month}'} 月 / {'{lunar_day}'} 日 / {'{ganzhi}'} 干支 / {'{zodiac}'} 生肖</small>
-          </div>
-        </template>
+        <!-- 元数据驱动属性表单 -->
+        <PropertySchemaForm
+          :schema="currentSchema"
+          :read="readField"
+          :write="writeField"
+          :suggestions="fieldSuggestions"
+        />
 
-        <!-- 天气属性 -->
-        <template v-if="selectedComponent === 'weather'">
-          <!-- 样式选择卡片（内容组件样式选择器） -->
-          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
-            <div class="face-selector-preview">
-              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
-            </div>
-            <div class="face-selector-info">
-              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
-              <span class="face-selector-action">点击进入样式选择</span>
-            </div>
-          </div>
-          <div class="field">
-            <label>天气实体</label>
-            <Select
-              v-model="draft.components.weather.entity"
-              :options="weatherEntities"
-              editable
-              class="w-full"
-              placeholder="weather.home"
-            />
-          </div>
-        </template>
-
-        <!-- 单条自定义文本属性（在组件分类中选中某条文本时） -->
-        <template v-if="selectedTextIndex >= 0">
-          <!-- 样式选择卡片（内容组件样式选择器） -->
-          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
-            <div class="face-selector-preview">
-              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
-            </div>
-            <div class="face-selector-info">
-              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
-              <span class="face-selector-action">点击进入样式选择</span>
-            </div>
-          </div>
-          <div class="field">
-            <label>文本内容</label>
-            <InputText
-              v-model="selectedTextContent"
-              class="w-full"
-              placeholder="文本内容，可含 {entity_id} 占位符"
-            />
-            <small>支持实体占位符，如 室温 {'{sensor.temp}'}°C</small>
-          </div>
-          <div class="inline-row"><label>显示该条文本</label><ToggleSwitch v-model="selectedTextShow" /></div>
-          <div class="field">
-            <Button label="删除此文本" icon="pi pi-trash" severity="danger" size="small" text @click="removeSelectedText" />
-          </div>
-        </template>
+        <!-- 单条自定义文本：删除按钮（内容 / 显隐已由 schema 渲染） -->
+        <div v-if="selectedTextIndex >= 0" class="field">
+          <Button label="删除此文本" icon="pi pi-trash" severity="danger" size="small" text @click="removeSelectedText" />
+        </div>
 
         <!-- 通用：布局编辑（X/Y/宽/高） -->
         <div class="layout-section">

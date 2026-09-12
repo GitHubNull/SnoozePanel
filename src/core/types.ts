@@ -77,6 +77,8 @@ export interface ClockComponent {
   layout: ComponentLayout;
   /** 自定义字体颜色（覆盖主题色，如 "#ff0000" / "rgb(255,0,0)"） */
   color?: string;
+  /** 表盘自定义配置透传（内置渲染忽略，供第三方表盘/插件消费） */
+  options?: Record<string, unknown>;
 }
 
 /** 日历组件 */

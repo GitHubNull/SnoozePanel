@@ -1,0 +1,14 @@
+{
+  "id": "pixel",
+  "kind": "face",
+  "label": "像素时钟",
+  "entry": "index.js",
+  "apiVersion": 1,
+  "author": "SnoozePanel 社区",
+  "version": "1.0.0",
+  "summary": "复古霓虹风格的数字时钟，支持自定义强调色与发光。",
+  "description": "演示第三方表盘插件的最小实现：仅依赖宿主 SDK 暴露的 Vue 运行时与统一 FaceProps，通过 options 透传自定义参数，并按元数据 schema 声明属性面板控件。",
+  "usage": "安装后于「表盘市场」中选择「像素时钟」，可在属性面板调整强调色与发光开关。",
+  "homepage": "https://github.com/snoozepanel/snoozepanel",
+  "license": "MIT"
+}

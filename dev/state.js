@@ -47,6 +47,8 @@ export const el = {
   btnRestoreBottom: /** @type {HTMLButtonElement} */ ($id('btn-restore-bottom')),
   btnRefreshDevices: /** @type {HTMLButtonElement} */ ($id('btn-refresh-devices')),
   deviceList: /** @type {HTMLUListElement} */ ($id('device-list')),
+  btnRefreshPlugins: /** @type {HTMLButtonElement} */ ($id('btn-refresh-plugins')),
+  pluginList: /** @type {HTMLUListElement} */ ($id('plugin-list')),
   btnClearLog: /** @type {HTMLButtonElement} */ ($id('btn-clear-log')),
   logList: /** @type {HTMLUListElement} */ ($id('log')),
   toastStack: $id('toast-stack'),

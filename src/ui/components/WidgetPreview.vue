@@ -12,7 +12,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { Component } from 'vue';
-import { getWidget } from '@/ui/widgets/registry';
+import { widgetsVersion, getWidget } from '@/ui/widgets/registry';
 import { getTheme } from '@/ui/themes';
 import type { HassLike } from '@/core/hass';
 import { Ticker } from '@/runtime/ticker';
@@ -26,7 +26,10 @@ const props = defineProps<{
   theme: 'midnight' | 'paper';
 }>();
 
-const widgetComponent = computed<Component>(() => getWidget(props.type, props.style).component);
+const widgetComponent = computed<Component>(() => {
+  void widgetsVersion.value; // 依赖注册表变更计数：运行时安装 / 卸载样式后即时刷新
+  return getWidget(props.type, props.style).component;
+});
 const theme = computed(() => getTheme(props.theme));
 
 /** 各类型样例 options（让预览展示出最典型的形态） */
