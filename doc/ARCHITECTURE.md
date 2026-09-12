@@ -90,7 +90,7 @@
 
 **理由**：
 - HA「资源」机制只接受单个 JS 文件 URL，不接受 ES module 的相对 import。
-- HA 前端无 Vue，必须自包含打包（产物约 528KB，gzip 约 129KB，可接受）。
+- HA 前端无 Vue，必须自包含打包（当前产物约 686KB，gzip 约 171KB，可接受）。
 - CSS 注入 JS：避免 HA 资源机制还要额外配 CSS 文件。
 - IIFE 而非 ESM：HA 旧版本对 ESM 资源支持不一致，IIFE 兼容性最好。
 
@@ -190,7 +190,7 @@
 ## 决策 13：插件五区布局 + dev 分层装备 + 画布网格为 UI 偏好
 
 **结论**：
-- HA 插件配置界面 `EditorApp.vue` 自成**五区**（插件菜单栏 / 组件分类选择区 / 屏保效果阅览与位置尺寸编辑区 / 组件属性编辑器 / 插件状态栏）；无论宿主是 HA 卡片编辑弹窗、HA 侧边栏还是 dev 实测台，插件都完整呈现这套布局——菜单栏与状态栏属于插件自身。
+- HA 插件配置界面自成**五区**（插件菜单栏 / 组件分类选择区 / 屏保效果阅览与位置尺寸编辑区 / 组件属性编辑器 / 插件状态栏）；该布局由 `EditorApp.vue`（瘦编排层）与 `src/editor/components/` 下五个子组件共同实现（见决策 14）；无论宿主是 HA 卡片编辑弹窗、HA 侧边栏还是 dev 实测台，插件都完整呈现这套布局——菜单栏与状态栏属于插件自身。
 - `dev/` 实测台回归**外层测试装备**（截图1 结构）：顶栏（运行时操作，可收起）/ 中部预留舞台（背板 + 与顶底栏 16px 间隔，内嵌同一插件）/ 底栏（运行日志 + mock 后端设备，可向上拖高/收起/恢复默认）。实测台不侵入插件内部；「dev 与 HA 对齐」= 内嵌同一个组件，而非两份功能清单拉平。
 - 面板宽度/收起、画布网格（显示/磁吸/步长，`snoozepanel.plugin.layout`）与 dev 顶栏/底栏布局（`snoozepanel.dev.layout`）存 `localStorage`，属**纯 UI 偏好**，与「配置持久化必须走 HA 后端」红线不冲突。
 - 中央编辑区默认显示网格并默认开启磁吸附（`src/runtime/drag.ts` 的 `snapTo`/`snapResize` 纯函数，吸附在 clamp 之后执行）；仅鼠标拖拽/缩放吸附，右面板手动输入不被吸附接管。网格层用双轴 1px `linear-gradient` + `background-size: <步长>%` 自适应，仅编辑态渲染。
@@ -204,3 +204,21 @@
 - ❌ 插件与 dev 各维护一套布局：必然漂移。
 - ❌ 把面板尺寸/网格偏好写进配置对象：把 UI 状态混入用户配置资产，污染后端存储与配置 diff。
 - ❌ 网格用 JS 逐帧重算：`linear-gradient` + `background-size(%)` 随尺寸自适应更简、零 JS。
+
+## 决策 14：模块化拆分 = 手写源码单文件 ≤ 520 行 + ESLint max-lines 强制
+
+**结论**：全部手写源码（`src/**/*.{ts,vue}`、`dev/**/*.js`、工程配置 `*.config.ts` / `eslint.config.js`）单文件不得超过 **520 行**，超限必须按职责拆分；约束由 `eslint.config.js` 的一条 `max-lines: ['error', 520]` 规则块**强制**（`pnpm lint` 违规即报错），而非口头约定。重构后全量文件均 ≤ 520 行（最大 `src/ui/components/ComponentWrapper.vue` 440 行）。
+
+**落地方式（重构前仅两个文件超限）**：
+- `src/editor/EditorApp.vue`（原约 1350 行）→ **瘦编排层**（约 300 行）+ 五区子组件（`src/editor/components/`：`EditorMenuBar` / `CategoryPanel` / `EditorCanvas` / `PropertyPanel` / `StatusBar`）+ 三个组合式函数（`src/editor/composables/`：`useEditorDraft` 草稿与回声防护、`useComponentSelection` 选中态派生、`useDeviceSave` 设备级保存）。跨区共享的三份可变状态（草稿 / UI 偏好 / 选中态）经 `editorContext.ts` 的 provide/inject 下发，规避 `vue/no-mutating-props` 与逐字段 emit 样板；共享样式抽到 `src/editor/editor.css`，各区专属样式随元素迁入对应子组件。
+- `dev/dev.js`（原约 900 行）→ **瘦入口**（约 110 行，仅事件绑定与启动编排）+ 同目录 ES 模块（`types` / `constants` / `state` / `log` / `mock` / `bundle` / `config` / `editor` / `runtime` / `layout.js`）。可变运行时状态收敛到 `state.js` 的单一 `state` 对象——ESM 导入绑定是只读的，跨模块 `let` 重赋值不生效，故必须以对象属性承载。
+
+**理由**：
+- 单文件过长使代码审查、符号定位与并行修改成本陡增；按「五区 / 职责」边界拆分后，每个文件聚焦单一关注点。
+- 约束必须**可机器强制**（ESLint `max-lines`），否则文件规模回升时无人察觉；`max-lines` 随 `pnpm lint` 天然进入交付卡点。
+- 本次为**纯重构**：不改配置字段、不改 UI 外观、不改对外事件与接口，`src/tests/` 无直接引用编辑器内部，单测不受影响。
+
+**备选方案**：
+- ❌ 仅口头约定「尽量不超过 N 行」：无强制力，随时间必然回退。
+- ❌ 用行数统计脚本做 CI 卡点：与 ESLint 生态割裂，且无法给出违规行级定位。
+- ❌ 为凑行数拆分未超限文件：增加无谓的文件跳转成本，违背「仅在超限时按职责拆分」的原则。

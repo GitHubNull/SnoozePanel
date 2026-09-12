@@ -31,18 +31,33 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   └── ticker.ts       # Ticker：1s tick，后台标签页暂停
 │   ├── ui/                 # 屏保 UI
 │   │   ├── ScreensaverApp.vue
-│   │   ├── components/     # FacePreview（缩略预览摄像机）/ ClockDigital / ClockAnalog / CalendarView / LunarView / WeatherView / CustomText
+│   │   ├── components/     # ComponentWrapper / FacePreview（缩略预览摄像机）/ CalendarView / LunarView / WeatherView / CustomText
+│   │   ├── faces/          # 表盘框架：registry.ts（import.meta.glob 构建时收集）+ types.ts + 各表盘目录（digital/ring/analog/chrono/minimal/orbit）
 │   │   └── themes.ts       # midnight / paper 两套主题
 │   ├── editor/             # GUI 编辑器
 │   │   ├── editor.ts       # SnoozePanelEditorElement（HA card editor 协议）
-│   │   ├── EditorApp.vue   # PrimeVue 中文编辑器根（五区：菜单栏 / 分类区 / 画布 / 属性区 / 状态栏）
+│   │   ├── EditorApp.vue   # 编辑器根：瘦编排层（组织五区子组件 + Toast + 表盘市场，provide 三份共享上下文）
+│   │   ├── editorContext.ts # 编辑器共享上下文注入键与 helper（草稿 / UI 偏好 / 选中态）
+│   │   ├── editor.css      # 编辑器五区共享样式（各子组件以 <style scoped src> 复用）
+│   │   ├── components/     # 五区子组件（EditorMenuBar / CategoryPanel / EditorCanvas / PropertyPanel / StatusBar）
+│   │   ├── composables/    # 组合式函数（useEditorDraft / useComponentSelection / useDeviceSave）
 │   │   ├── useEditorLayout.ts # 编辑器 UI 偏好：面板宽度/收起 + 画布网格/磁吸（localStorage，仅 UI）
 │   │   ├── panels/         # 菜单栏全局配置浮层（Basic / Appearance / Conditions / Device / Advanced）
 │   │   └── forms/          # 复用分区表单（EntityConditionsForm）
 │   └── tests/              # Vitest 单测（*.spec.ts）
 ├── dev/                    # ★ 本地 mock 实测页（必须入库，供他人测试/核对/验证）
-│   ├── index.html          # 页面结构 + 内联样式（截图1结构：顶栏可收起 / 背板舞台内嵌插件 / 底栏可拖高可收起；内置 mock hass，动态加载 tmp/dist 产物）
-│   └── dev.js              # 全部逻辑（// @ts-check + JSDoc，由 tsconfig.dev.json 做类型检查；顶栏/底栏布局记忆 snoozepanel.dev.layout，仅 UI 偏好）
+│   ├── index.html          # 页面结构 + 内联样式（顶栏可收起 / 背板舞台内嵌插件 / 底栏可拖高可收起；内置 mock hass，动态加载 tmp/dist 产物）
+│   ├── dev.js              # 入口：仅事件绑定 bindEvents 与启动 bootstrap（// @ts-check + JSDoc）
+│   ├── types.js            # 共享 JSDoc 类型定义（由 tsconfig.dev.json 统一校验）
+│   ├── constants.js        # 常量（实体名 / 冷却 / 产物路径 / 日志上限 / 布局 key / 底栏高度）
+│   ├── state.js            # 页面元素引用 + 可变运行时状态（单一对象承载，避免 ESM 重赋值失效）
+│   ├── log.js              # 分级日志 / Toast / 按钮 busy 态
+│   ├── mock.js             # mock hass + mock 后端（WS 读写）+ 设备列表渲染
+│   ├── bundle.js           # 构建产物加载与状态徽标
+│   ├── config.js           # 运行时配置构建与读取
+│   ├── editor.js           # 内嵌编辑器创建与 config-changed 桥接
+│   ├── runtime.js          # 运行时挂载/触发/退出/卸载 + 状态徽标
+│   └── layout.js           # 实测台 UI 布局偏好（顶栏收起 / 底栏高度·收起，localStorage）
 ├── doc/                    # 文档（见下方文档体系）
 ├── img/                    # 截图（README 引用）
 ├── tmp/                    # 唯一临时目录：构建产物/验证截图/一次性脚本/垃圾数据/敏感文件（整体 .gitignore）
@@ -71,7 +86,7 @@ pnpm build            # 构建 → tmp/dist/snoozepanel.js
 pnpm test             # 跑全部单测（Vitest）
 pnpm test:watch       # watch 模式
 pnpm typecheck        # vue-tsc 全量类型检查（src）
-pnpm typecheck:dev    # tsc 检查 dev/dev.js（allowJs + checkJs）
+pnpm typecheck:dev    # tsc 检查 dev/**/*.js（allowJs + checkJs）
 pnpm lint             # ESLint（src + dev + 工程配置）
 ```
 
@@ -104,6 +119,7 @@ python -m http.server 8765   # 或任意静态服务器
 
 - **全中文注释与文档**：代码注释、commit message、文档一律中文。
 - **纯函数优先**：`src/core/` 下全部是无副作用纯函数，禁止 import 任何 DOM API；DOM/定时器/事件只能出现在 `src/runtime/`、`src/ui/`、`src/editor/`。
+- **单文件 ≤ 520 行**：手写源码（`src/**`、`dev/**`、工程配置）单文件不得超过 520 行，超限须以模块化方式拆分；由 `eslint.config.js` 的 `max-lines` 规则强制（`pnpm lint` 会拦截）。
 - **类型完备**：新增配置字段必须先在 `src/core/types.ts` 声明类型 + 在 `DEFAULT_CONFIG` 给默认值 + 在 `normalizeConfig` 做校验。
 - **测试真实**：禁止伪造测试输出；单测必须真实跑过并把真实输出贴入自检报告。
 

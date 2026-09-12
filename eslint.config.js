@@ -7,6 +7,9 @@
  *  - dev/**：本地实测页脚本（浏览器环境；JS 类型检查由 tsconfig.dev.json 负责）
  *  - 工程配置文件（*.config.ts / 本文件）：Node 环境
  * 忽略：tmp/（构建产物与临时文件）、node_modules/、dist/ 等
+ *
+ * 模块化约束：手写源码（src/**、dev/**、工程配置）单文件不得超过 520 行；
+ * 超限一律以模块化方式拆分（见 max-lines 规则块）。
  */
 import js from '@eslint/js';
 import globals from 'globals';
@@ -76,6 +79,20 @@ export default tseslint.config(
     files: ['*.config.ts', 'eslint.config.js'],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+
+  // ---- 模块化约束：手写源码单文件 ≤ 520 行 ----
+  // 覆盖 src（TS/Vue）、dev 实测页脚本与工程配置文件；超限须以模块化方式拆分。
+  {
+    files: [
+      'src/**/*.{ts,vue}',
+      'dev/**/*.js',
+      '*.config.ts',
+      'eslint.config.js',
+    ],
+    rules: {
+      'max-lines': ['error', 520],
     },
   },
 );

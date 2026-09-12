@@ -4,6 +4,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.1] - 2026-09-12 20:18:03
+
+### Added
+- 模块化强制约束：ESLint `max-lines: 520` 规则——手写源码（`src/**/*.{ts,vue}` / `dev/**/*.js` / 工程配置）单文件不得超过 520 行，`pnpm lint` 违规即报错（超限须以模块化方式拆分）
+- `src/editor/editorContext.ts`：编辑器三份跨区共享上下文（草稿 / UI 偏好 / 选中态）的 provide/inject 注入键与 helper
+- `src/editor/components/`：五区子组件拆分（EditorMenuBar / CategoryPanel / EditorCanvas / PropertyPanel / StatusBar）
+- `src/editor/composables/`：组合式函数抽取（useEditorDraft 草稿与回声防护 / useComponentSelection 选中态派生 / useDeviceSave 设备级保存）
+- `src/editor/editor.css`：编辑器五区共享样式（子组件以 `<style scoped src>` 复用）
+- dev 实测页同目录 ES 模块拆分：`types / constants / state / log / mock / bundle / config / editor / runtime / layout.js`
+- ARCHITECTURE 决策 14：模块化拆分与 520 行强制约束的理由与落地方式
+
+### Changed
+- `src/editor/EditorApp.vue` 由原约 1350 行重构为瘦编排层（263 行，组织五区子组件 + Toast + 表盘市场）
+- `dev/dev.js` 由原约 900 行重构为瘦入口（106 行，仅事件绑定与启动编排）；可变运行时状态收敛到 `state.js` 单一对象承载（ESM 导入绑定只读，跨模块 `let` 重赋值不生效）
+- `tsconfig.dev.json` 类型检查范围由 `dev/dev.js` 扩展为 `dev/**/*.js`
+- AGENTS.md 目录结构与代码规范更新（单文件 ≤520 行红线），README 与 AI 代理规范 / 人类教程文档同步
+
 ## [0.4.0] - 2026-09-12 19:38:36
 
 ### Added

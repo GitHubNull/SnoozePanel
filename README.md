@@ -83,7 +83,7 @@ views:
 
 ## 开发与测试
 
-本仓库自带 mock 实测页（`dev/index.html` + `dev/dev.js`），clone 后**无需连接真实 HA** 即可核对/验证全部功能：
+本仓库自带 mock 实测页（`dev/index.html` + `dev/dev.js` 入口及其同目录 ES 模块：`types / constants / state / log / mock / bundle / config / editor / runtime / layout.js`），clone 后**无需连接真实 HA** 即可核对/验证全部功能：
 
 ```bash
 pnpm install
