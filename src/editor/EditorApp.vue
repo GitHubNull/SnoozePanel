@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { reactive, watch, computed } from 'vue';
+import { reactive, watch, computed, ref, nextTick } from 'vue';
 import type { SnoozeConfig, GridPosition } from '@/core/types';
 import type { HassLike } from '@/core/hass';
-import TabView from 'primevue/tabview';
+import { listFaceOptions } from '@/ui/faces/registry';
+import { saveDeviceConfig } from '@/core/store';
+import { resolveDeviceId } from '@/core/device';
+import FacePreview from '@/ui/components/FacePreview.vue';
+import Toast from 'primevue/toast';
+import { useToast } from 'primevue/usetoast';
+import Tabs from 'primevue/tabs';
+import TabList from 'primevue/tablist';
+import Tab from 'primevue/tab';
+import TabPanels from 'primevue/tabpanels';
 import TabPanel from 'primevue/tabpanel';
-import InputSwitch from 'primevue/inputswitch';
+import ToggleSwitch from 'primevue/toggleswitch';
 import InputNumber from 'primevue/inputnumber';
 import InputText from 'primevue/inputtext';
-import Dropdown from 'primevue/dropdown';
+import Select from 'primevue/select';
 import Slider from 'primevue/slider';
 import Textarea from 'primevue/textarea';
 import Chip from 'primevue/chip';
@@ -27,10 +36,22 @@ const emit = defineEmits<{
 // 本地草稿，任何字段变更后整体 emit（深拷贝避免引用污染）
 const draft = reactive<SnoozeConfig>(JSON.parse(JSON.stringify(props.config)) as SnoozeConfig);
 
+/**
+ * 回声防护：HA 侧把 config-changed 的结果回填给 setConfig 时，
+ * props.config 变化 → 同步草稿 → 草稿深度 watcher 触发 → 若不拦截会再次 emit，
+ * 形成 emit → setConfig → emit 的无限循环。
+ * 同步期间置位标记，待草稿 watcher 本轮执行完毕（nextTick）后复位。
+ */
+let syncingFromProps = false;
+
 watch(
   () => props.config,
   (next) => {
+    syncingFromProps = true;
     Object.assign(draft, JSON.parse(JSON.stringify(next)) as SnoozeConfig);
+    void nextTick(() => {
+      syncingFromProps = false;
+    });
   },
   { deep: true },
 );
@@ -39,6 +60,8 @@ let emitTimer: ReturnType<typeof setTimeout> | null = null;
 watch(
   draft,
   () => {
+    // 仅 props 回填引起的同步不对外 emit
+    if (syncingFromProps) return;
     // 防抖 300ms，避免输入过程中频繁触发 config-changed
     if (emitTimer !== null) clearTimeout(emitTimer);
     emitTimer = setTimeout(() => {
@@ -66,10 +89,21 @@ const THEMES = [
   { label: '宣纸（浅色）', value: 'paper' },
 ];
 
-const CLOCK_STYLES = [
-  { label: '数字时钟', value: 'digital' },
-  { label: '模拟表盘', value: 'analog' },
-];
+// 表盘选项：从注册表动态生成（label 中文名，value 表盘 id，kind 种类），数字在前
+const CLOCK_STYLES = listFaceOptions().map((f) => ({ label: f.label, value: f.id, kind: f.kind }));
+
+/** 表盘 id → 中文名（下拉收起态展示） */
+function faceLabel(id: string): string {
+  return CLOCK_STYLES.find((f) => f.value === id)?.label ?? id;
+}
+
+/** 表盘种类中文文案 */
+function faceKindLabel(kind: 'digital' | 'analog'): string {
+  return kind === 'analog' ? '模拟' : '数字';
+}
+
+// ---- 保存反馈 Toast ----
+const toast = useToast();
 
 const BG_TYPES = [
   { label: '纯色', value: 'color' },
@@ -116,6 +150,57 @@ const imagesText = computed({
     draft.background.images = v.split('\n').map((s) => s.trim()).filter(Boolean);
   },
 });
+
+// ---- 设备级覆盖（后端持久化） ----
+const deviceId = resolveDeviceId();
+const deviceSaving = ref(false);
+const deviceSaved = ref('');
+
+/** 把当前草稿整体存为本设备的后端覆盖配置（含 Toast 反馈） */
+async function onSaveDevice(): Promise<void> {
+  if (!props.hass) {
+    deviceSaved.value = '后端不可用';
+    toast.add({
+      severity: 'warn',
+      summary: '后端不可用',
+      detail: '当前环境未连接 Home Assistant，无法保存设备级配置。',
+      life: 4000,
+    });
+    return;
+  }
+  deviceSaving.value = true;
+  deviceSaved.value = '';
+  try {
+    const ok = await saveDeviceConfig(props.hass, deviceId, JSON.parse(JSON.stringify(draft)) as SnoozeConfig);
+    deviceSaved.value = ok ? '已保存到后端' : '保存失败（后端不可用）';
+    if (ok) {
+      toast.add({
+        severity: 'success',
+        summary: '保存成功',
+        detail: `配置已保存为本设备（${deviceId}）的独立覆盖。`,
+        life: 3000,
+      });
+      setTimeout(() => { deviceSaved.value = ''; }, 3000);
+    } else {
+      toast.add({
+        severity: 'error',
+        summary: '保存失败',
+        detail: '后端未接受本次写入，请检查连接后重试。',
+        life: 5000,
+      });
+    }
+  } catch (err) {
+    deviceSaved.value = '保存异常';
+    toast.add({
+      severity: 'error',
+      summary: '保存异常',
+      detail: err instanceof Error ? err.message : String(err),
+      life: 5000,
+    });
+  } finally {
+    deviceSaving.value = false;
+  }
+}
 
 // 时间段条件开关
 const timeEnabled = computed({
@@ -182,6 +267,9 @@ const componentTemplatesModel = computed<string>({
 
 <template>
   <div class="snooze-editor">
+    <!-- 保存等操作反馈的 Toast 容器（底部右侧，自动消失） -->
+    <Toast position="bottom-right" />
+
     <header class="editor-header">
       <h2>SnoozePanel 屏保设置</h2>
       <p class="hint">配置将写入当前视图的 <code>snoozepanel:</code> 段。未配置屏保的视图不受影响。</p>
@@ -189,12 +277,21 @@ const componentTemplatesModel = computed<string>({
 
     <div class="field master-switch">
       <label>启用屏保</label>
-      <InputSwitch v-model="draft.enabled" />
+      <ToggleSwitch v-model="draft.enabled" />
     </div>
 
-    <TabView>
+    <Tabs value="basic">
+      <TabList>
+        <Tab value="basic">基础</Tab>
+        <Tab value="devices">设备范围</Tab>
+        <Tab value="conditions">生效条件</Tab>
+        <Tab value="components">显示组件</Tab>
+        <Tab value="background">背景</Tab>
+        <Tab value="advanced">高级</Tab>
+      </TabList>
+      <TabPanels>
       <!-- ============ 基础 ============ -->
-      <TabPanel header="基础">
+      <TabPanel value="basic">
         <div class="field">
           <label>闲置触发时长（秒）</label>
           <InputNumber v-model="draft.idle_seconds" :min="5" :max="3600" show-buttons />
@@ -207,7 +304,7 @@ const componentTemplatesModel = computed<string>({
         </div>
         <div class="field">
           <label>主题</label>
-          <Dropdown v-model="draft.theme" :options="THEMES" option-label="label" option-value="value" class="w-full" />
+          <Select v-model="draft.theme" :options="THEMES" option-label="label" option-value="value" class="w-full" />
         </div>
         <div class="field">
           <label>远程控制实体（input_boolean，可选）</label>
@@ -217,16 +314,16 @@ const componentTemplatesModel = computed<string>({
       </TabPanel>
 
       <!-- ============ 设备范围 ============ -->
-      <TabPanel header="设备范围">
+      <TabPanel value="devices">
         <div class="field">
           <label>按设备限制</label>
-          <InputSwitch v-model="deviceModeEnabled" />
+          <ToggleSwitch v-model="deviceModeEnabled" />
           <small>开启后仅指定设备生效/屏蔽。设备 id 显示在屏保右下角，或用 ?snooze_device=xxx 指定</small>
         </div>
         <template v-if="draft.devices">
           <div class="field">
             <label>名单模式</label>
-            <Dropdown v-model="draft.devices.mode" :options="DEVICE_MODES" option-label="label" option-value="value" class="w-full" />
+            <Select v-model="draft.devices.mode" :options="DEVICE_MODES" option-label="label" option-value="value" class="w-full" />
           </div>
           <div class="field">
             <label>设备 id 列表（逗号分隔）</label>
@@ -236,14 +333,14 @@ const componentTemplatesModel = computed<string>({
       </TabPanel>
 
       <!-- ============ 生效条件 ============ -->
-      <TabPanel header="生效条件">
+      <TabPanel value="conditions">
         <p class="hint">以下条件为「与」关系，全部满足才会进入屏保；屏保中条件失效会立即退出。</p>
 
         <EntityConditionsForm v-model="draft.conditions.entity" :hass="hass" />
 
         <div class="field">
           <label>时间段限制</label>
-          <InputSwitch v-model="timeEnabled" />
+          <ToggleSwitch v-model="timeEnabled" />
         </div>
         <template v-if="draft.conditions.time">
           <div class="field-row">
@@ -272,7 +369,7 @@ const componentTemplatesModel = computed<string>({
 
         <div class="field">
           <label>日出日落限制</label>
-          <InputSwitch v-model="sunEnabled" />
+          <ToggleSwitch v-model="sunEnabled" />
         </div>
         <template v-if="draft.conditions.sun">
           <div class="field">
@@ -288,42 +385,73 @@ const componentTemplatesModel = computed<string>({
       </TabPanel>
 
       <!-- ============ 显示组件 ============ -->
-      <TabPanel header="显示组件">
+      <TabPanel value="components">
         <!-- 时钟 -->
         <fieldset>
-          <legend><InputSwitch v-model="draft.components.clock.show" /> 时钟</legend>
+          <legend><ToggleSwitch v-model="draft.components.clock.show" /> 时钟</legend>
           <template v-if="draft.components.clock.show">
             <div class="field-row">
               <div class="field">
-                <label>样式</label>
-                <Dropdown v-model="draft.components.clock.style" :options="CLOCK_STYLES" option-label="label" option-value="value" class="w-full" />
+                <label>表盘</label>
+                <!-- 表盘下拉：选项/收起态均内嵌实时迷你预览（FacePreview 缩放舞台） -->
+                <Select
+                  v-model="draft.components.clock.style"
+                  :options="CLOCK_STYLES"
+                  option-label="label"
+                  option-value="value"
+                  panel-class="face-dropdown-panel"
+                  scroll-height="460px"
+                  class="w-full"
+                >
+                  <template #value="slotProps">
+                    <div class="face-cell">
+                      <FacePreview
+                        class="face-thumb"
+                        :face-id="String(slotProps.value ?? '')"
+                        :theme="draft.theme"
+                      />
+                      <span class="face-cell-label">{{ faceLabel(String(slotProps.value ?? '')) }}</span>
+                    </div>
+                  </template>
+                  <template #option="slotProps">
+                    <div class="face-cell">
+                      <FacePreview
+                        class="face-thumb"
+                        :face-id="slotProps.option.value"
+                        :theme="draft.theme"
+                      />
+                      <span class="face-cell-label">{{ slotProps.option.label }}</span>
+                      <span class="face-kind-badge">{{ faceKindLabel(slotProps.option.kind) }}</span>
+                    </div>
+                  </template>
+                </Select>
               </div>
               <div class="field">
                 <label>位置</label>
-                <Dropdown v-model="draft.components.clock.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
+                <Select v-model="draft.components.clock.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
               </div>
             </div>
             <div class="field-row">
-              <div class="field inline"><label>24 小时制</label><InputSwitch v-model="draft.components.clock.hour24" /></div>
-              <div class="field inline"><label>显示秒</label><InputSwitch v-model="draft.components.clock.seconds" /></div>
+              <div class="field inline"><label>24 小时制</label><ToggleSwitch v-model="draft.components.clock.hour24" /></div>
+              <div class="field inline"><label>显示秒</label><ToggleSwitch v-model="draft.components.clock.seconds" /></div>
             </div>
           </template>
         </fieldset>
 
         <!-- 日历 -->
         <fieldset>
-          <legend><InputSwitch v-model="draft.components.calendar.show" /> 日历</legend>
+          <legend><ToggleSwitch v-model="draft.components.calendar.show" /> 日历</legend>
           <template v-if="draft.components.calendar.show">
             <div class="field-row">
               <div class="field">
                 <label>周起始日</label>
-                <Dropdown v-model="draft.components.calendar.week_start"
+                <Select v-model="draft.components.calendar.week_start"
                   :options="[{label:'周一',value:1},{label:'周日',value:0}]"
                   option-label="label" option-value="value" class="w-full" />
               </div>
               <div class="field">
                 <label>位置</label>
-                <Dropdown v-model="draft.components.calendar.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
+                <Select v-model="draft.components.calendar.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
               </div>
             </div>
             <div class="field">
@@ -331,13 +459,13 @@ const componentTemplatesModel = computed<string>({
               <InputText v-model="draft.components.calendar.format" class="w-full" placeholder="M月D日 dddd" />
               <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
             </div>
-            <div class="field inline"><label>显示周数</label><InputSwitch v-model="draft.components.calendar.show_week_number" /></div>
+            <div class="field inline"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
           </template>
         </fieldset>
 
         <!-- 农历 -->
         <fieldset>
-          <legend><InputSwitch v-model="draft.components.lunar.show" /> 农历</legend>
+          <legend><ToggleSwitch v-model="draft.components.lunar.show" /> 农历</legend>
           <template v-if="draft.components.lunar.show">
             <div class="field">
               <label>格式模板</label>
@@ -346,22 +474,22 @@ const componentTemplatesModel = computed<string>({
             </div>
             <div class="field">
               <label>位置</label>
-              <Dropdown v-model="draft.components.lunar.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
+              <Select v-model="draft.components.lunar.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
             </div>
           </template>
         </fieldset>
 
         <!-- 天气 -->
         <fieldset>
-          <legend><InputSwitch v-model="draft.components.weather.show" /> 天气</legend>
+          <legend><ToggleSwitch v-model="draft.components.weather.show" /> 天气</legend>
           <template v-if="draft.components.weather.show">
             <div class="field">
               <label>天气实体</label>
-              <Dropdown v-model="draft.components.weather.entity" :options="weatherEntities" editable class="w-full" placeholder="weather.home" />
+              <Select v-model="draft.components.weather.entity" :options="weatherEntities" editable class="w-full" placeholder="weather.home" />
             </div>
             <div class="field">
               <label>位置</label>
-              <Dropdown v-model="draft.components.weather.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
+              <Select v-model="draft.components.weather.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
             </div>
           </template>
         </fieldset>
@@ -371,13 +499,27 @@ const componentTemplatesModel = computed<string>({
           <legend>自定义文本</legend>
           <TextsForm v-model="draft.components.texts" :positions="POSITIONS" />
         </fieldset>
+
+        <!-- 设备级覆盖（后端持久化） -->
+        <fieldset>
+          <legend>设备级覆盖</legend>
+          <div class="field">
+            <label>当前设备 id</label>
+            <div class="device-id-text">{{ deviceId }}</div>
+            <small>把当前配置存为该设备的独立覆盖，落盘到 HA 后端（断电/重启/清缓存不丢）</small>
+          </div>
+          <div class="field">
+            <Button :loading="deviceSaving" label="保存为本设备配置" @click="onSaveDevice" />
+            <span v-if="deviceSaved" class="save-hint">{{ deviceSaved }}</span>
+          </div>
+        </fieldset>
       </TabPanel>
 
       <!-- ============ 背景 ============ -->
-      <TabPanel header="背景">
+      <TabPanel value="background">
         <div class="field">
           <label>背景类型</label>
-          <Dropdown v-model="draft.background.type" :options="BG_TYPES" option-label="label" option-value="value" class="w-full" />
+          <Select v-model="draft.background.type" :options="BG_TYPES" option-label="label" option-value="value" class="w-full" />
         </div>
         <div v-if="draft.background.type === 'color'" class="field">
           <label>颜色</label>
@@ -411,7 +553,7 @@ const componentTemplatesModel = computed<string>({
       </TabPanel>
 
       <!-- ============ 高级 ============ -->
-      <TabPanel header="高级">
+      <TabPanel value="advanced">
         <div class="field">
           <label>整体显隐表达式（display_template）</label>
           <Textarea v-model="displayTemplateModel" rows="3" class="w-full code"
@@ -428,7 +570,8 @@ const componentTemplatesModel = computed<string>({
           <small>键为组件名（clock/calendar/lunar/weather/text_0…），值为 JS 表达式。</small>
         </div>
       </TabPanel>
-    </TabView>
+      </TabPanels>
+    </Tabs>
   </div>
 </template>
 
@@ -507,5 +650,66 @@ legend {
   opacity: 1;
   background: var(--primary-color, #5ea0ff);
   color: #fff;
+}
+.device-id-text {
+  font-family: monospace;
+  font-size: 14px;
+  padding: 6px 10px;
+  background: var(--card-background-color, #f5f5f5);
+  border-radius: 6px;
+  user-select: text;
+}
+.save-hint {
+  margin-left: 10px;
+  font-size: 13px;
+  color: var(--primary-color, #5ea0ff);
+}
+
+/* ---- 表盘下拉预览单元格（收起态 + 选项行共用） ---- */
+.face-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  width: 100%;
+}
+.face-thumb {
+  width: 96px;
+  height: 54px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid var(--divider-color, #e0e0e0);
+}
+.face-cell-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.face-kind-badge {
+  flex: none;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--primary-color, #5ea0ff);
+  background: color-mix(in srgb, var(--primary-color, #5ea0ff) 14%, transparent);
+}
+</style>
+
+<!--
+  表盘下拉浮层样式（非 scoped）：PrimeVue 浮层会 Teleport 到 body，
+  父组件的 scoped 属性不会作用于浮层，需以 panelClass（face-dropdown-panel）定位。
+  两个关键事实：
+  1. PrimeVue v4 的 Dropdown 实际渲染为 Select 的 DOM——浮层/列表容器/选项的类名
+     为 p-select-overlay / p-select-list-container / p-select-option（不存在 p-dropdown-*），
+     选择器必须用 p-select-*；列表可视高度由组件 scrollHeight 属性控制（内联 max-height，
+     默认 14rem 仅容约 3 行），模板中已设为 460px 以容纳全部 6 行选项（每行约 62px）。
+  2. 类名必须全局唯一：dev 实测页的自定义下拉另有独立样式（position/left/right 等），
+     曾因复用同名类导致浮层被拉伸为近全宽。
+-->
+<style>
+.face-dropdown-panel .p-select-option {
+  padding: 4px 10px;
 }
 </style>

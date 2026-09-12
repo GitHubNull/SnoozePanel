@@ -5,7 +5,7 @@ import type { HassLike } from '@/core/hass';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Button from 'primevue/button';
-import Dropdown from 'primevue/dropdown';
+import Select from 'primevue/select';
 
 const props = defineProps<{
   modelValue: EntityCondition[] | undefined;
@@ -54,7 +54,7 @@ function patchRow(idx: number, patch: Partial<EntityCondition>): void {
     <p class="hint">多个条件为「与」关系。每行可填 state / above / below 之一或组合。</p>
 
     <div v-for="(row, idx) in list" :key="idx" class="cond-row">
-      <Dropdown
+      <Select
         :model-value="row.entity"
         :options="entityOptions"
         editable

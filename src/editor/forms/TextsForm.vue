@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import type { TextComponent, GridPosition } from '@/core/types';
 import InputText from 'primevue/inputtext';
-import Dropdown from 'primevue/dropdown';
+import Select from 'primevue/select';
 import Button from 'primevue/button';
 
 const props = defineProps<{
@@ -51,7 +51,7 @@ function patchRow(idx: number, patch: Partial<TextComponent>): void {
         class="content-input"
         @update:model-value="patchRow(idx, { content: String($event ?? '') })"
       />
-      <Dropdown
+      <Select
         :model-value="row.position"
         :options="positions"
         option-label="label"

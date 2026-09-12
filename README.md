@@ -83,7 +83,7 @@ views:
 
 ## 开发与测试
 
-本仓库自带 mock 实测页（`dev/index.html`），clone 后**无需连接真实 HA** 即可核对/验证全部功能：
+本仓库自带 mock 实测页（`dev/index.html` + `dev/dev.js`），clone 后**无需连接真实 HA** 即可核对/验证全部功能：
 
 ```bash
 pnpm install
@@ -92,7 +92,9 @@ python -m http.server 8765        # 或任意静态服务器
 # 浏览器打开 http://127.0.0.1:8765/dev/
 ```
 
-mock 页内置 mock hass 对象，可切换主题/时钟样式/背景、一键触发屏保、内联渲染配置编辑器。单元测试：`pnpm test`。详见 [开发环境搭建](doc/开发维护/人类开发维护教程/01-环境搭建.md)。
+![mock 实测页](img/dev-page.png)
+
+mock 页内置 mock hass 对象，可切换主题/表盘/背景（表盘下拉内嵌实时迷你预览）、一键触发/退出屏保（走与生产一致的 `screensaver_entity` 通路）、内联渲染配置编辑器；操作反馈均有 Toast 与分级运行日志。单元测试：`pnpm test`。详见 [开发环境搭建](doc/开发维护/人类开发维护教程/01-环境搭建.md)。
 
 ## 文档
 

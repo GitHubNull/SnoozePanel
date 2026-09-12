@@ -70,7 +70,8 @@ export interface Conditions {
 /** 时钟组件 */
 export interface ClockComponent {
   show: boolean;
-  style: 'digital' | 'analog';
+  /** 表盘 id（对应 src/ui/faces/<id>/），如 digital / analog / chrono / minimal / ring / orbit */
+  style: string;
   hour24: boolean;
   seconds: boolean;
   position: Position;

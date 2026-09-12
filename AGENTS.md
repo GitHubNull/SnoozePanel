@@ -12,7 +12,7 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 ```
 项目根/
 ├── src/                    # 唯一入库源码目录（.ts / .vue）
-│   ├── main.ts             # 入口：注册 <snooze-panel> 与 <snooze-panel-editor>
+│   ├── main.ts             # 入口：注册 <snooze-panel> 与 <snooze-panel-editor>；暴露 SnoozePanelTestApi（实测支撑）
 │   ├── panel.ts            # SnoozePanelElement：hass setter / 视图配置读取 / 生命周期
 │   ├── core/               # 纯函数核心层（无 DOM 依赖，全部可单测）
 │   │   ├── types.ts        # SnoozeConfig 全量类型 + DEFAULT_CONFIG
@@ -27,10 +27,11 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   ├── runtime/            # 运行时层（DOM/定时器/事件）
 │   │   ├── controller.ts   # SnoozeController：激活/退出状态机、闲置计时、冷却
 │   │   ├── mount.ts        # mountScreensaver：Vue 子应用挂载/卸载
+│   │   ├── preview.ts      # mountFacePreview：表盘缩略预览挂载封装（供 dev 页跨 IIFE 调用）
 │   │   └── ticker.ts       # Ticker：1s tick，后台标签页暂停
 │   ├── ui/                 # 屏保 UI
 │   │   ├── ScreensaverApp.vue
-│   │   ├── components/     # ClockDigital / ClockAnalog / CalendarView / LunarView / WeatherView / CustomText
+│   │   ├── components/     # FacePreview（缩略预览摄像机）/ ClockDigital / ClockAnalog / CalendarView / LunarView / WeatherView / CustomText
 │   │   └── themes.ts       # midnight / paper 两套主题
 │   ├── editor/             # GUI 编辑器
 │   │   ├── editor.ts       # SnoozePanelEditorElement（HA card editor 协议）
@@ -38,7 +39,8 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   └── forms/          # 分区表单
 │   └── tests/              # Vitest 单测（*.spec.ts）
 ├── dev/                    # ★ 本地 mock 实测页（必须入库，供他人测试/核对/验证）
-│   └── index.html          # 内置 mock hass，动态加载 tmp/dist 产物实测
+│   ├── index.html          # 页面结构 + 内联样式（现代卡片式实测台，内置 mock hass，动态加载 tmp/dist 产物）
+│   └── dev.js              # 全部逻辑（// @ts-check + JSDoc，由 tsconfig.dev.json 做类型检查）
 ├── doc/                    # 文档（见下方文档体系）
 ├── img/                    # 截图（README 引用）
 ├── tmp/                    # 唯一临时目录：构建产物/验证截图/一次性脚本/垃圾数据/敏感文件（整体 .gitignore）
@@ -66,6 +68,9 @@ pnpm install          # 安装依赖（首次）
 pnpm build            # 构建 → tmp/dist/snoozepanel.js
 pnpm test             # 跑全部单测（Vitest）
 pnpm test:watch       # watch 模式
+pnpm typecheck        # vue-tsc 全量类型检查（src）
+pnpm typecheck:dev    # tsc 检查 dev/dev.js（allowJs + checkJs）
+pnpm lint             # ESLint（src + dev + 工程配置）
 ```
 
 本地 mock 实测：

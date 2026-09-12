@@ -126,11 +126,63 @@
 **实现边界**：
 - 前端：统一封装配置读写（优先走后端 WS API；后端不可用时降级为视图 YAML 只读 + console 提示），**严禁把 localStorage 当作配置的权威存储**。
 - 后端：custom component 提供 `snoozepanel/get_config` / `snoozepanel/set_config` 等 WS 命令，按 `device_id` 分区存储。
-- 迁移：从纯前端上翻到后端持久化时，需把已存在的 localStorage 配置一次性上翻（best-effort）。
 
 **备选方案**：
 - ❌ 仅用浏览器 localStorage：清缓存/换 App 即丢，不可接受。
 - ❌ 仅用视图 YAML：无法承载每台设备的独立配置记录。
 - ❌ 复用 `input_text` 等 HA helper 存配置：侵入用户实体列表，且容量/结构受限。
 
-**当前状态**：视图级配置已随 lovelace 持久化生效；后端配置持久化 component 尚未实现，列为 P0 待办（见 `doc/TODO.md`）。
+**当前状态**：已实现。后端 `custom_components/snoozepanel/` 提供 WS API（`snoozepanel/get_config` / `set_config` / `list_devices` / `delete_config`），设备级配置按 `device_id` 分区存于 HA `.storage/snoozepanel`（`Store` 原子写、跨重启存活）；前端 `src/core/store.ts` 封装读写（WS 优先 + 视图 YAML 降级），`panel.ts` 启动控制器前加载设备覆盖并 `mergeConfig` 合并。
+
+**WS API 与存储模型**：
+- `snoozepanel/get_config` `{device_id}` → `{config: object|null}`
+- `snoozepanel/set_config` `{device_id, config}` → `{success: true}`
+- `snoozepanel/list_devices` → `{devices: string[]}`；`snoozepanel/delete_config` `{device_id}` → `{success: bool}`
+- 存储结构：`{"devices": {"<device_id>": {<设备级配置覆盖>}}}`；设备级只存覆盖项，与视图 YAML 合并时覆盖优先。
+
+## 决策 10：表盘框架 = 表盘即目录 + 构建时 import.meta.glob 收集
+
+**结论**：时钟从硬编码 `digital`/`analog` 二选一升级为可扩展表盘框架。每个表盘是 `src/ui/faces/<id>/` 一个目录（`index.vue` 入口 + 可选子组件/`face.meta.ts`），用 Vite `import.meta.glob('./faces/*/index.vue', { eager: true })` 在**构建时**收集进单文件 IIFE 产物；`faces/registry.ts` 导出 `getFace`/`listFaces`；`ClockComponent.style` 由枚举改为表盘 id（`string`）；`ScreensaverApp.vue` 用 `<component :is>` 按 id 动态渲染。
+
+**理由**：
+- 用户要求表盘「多文件组合、可维护」——复杂表盘（如机械计时码表 chrono）需拆成齿轮组/子表盘/指针组多个子组件，单文件不可维护。
+- 产物必须是单文件（HA 资源机制只接受单 JS），且红线禁止运行时外发请求——`import.meta.glob` 让「多文件组合」与「单文件产物」兼得，「导入新表盘 = 放目录重新 build」，无需改注册代码。
+- 统一表盘 props 接口 `FaceProps`（`now/seconds/hour24/theme`），屏保根统一传参，表盘自包含配色。
+- 项目早期无历史用户，`style` 直接重定义为表盘 id，不做向后兼容（core 层宽松透传，渲染层 `getFace` 兑底回退 `digital`）。
+
+**备选方案**：
+- ❌ 表盘运行时从 URL 动态加载：违反「不外发请求」红线，且单文件产物不允许。
+- ❌ 表盘仍写死在 ScreensaverApp 里 if/else：不可扩展，每加一款都要改渲染层。
+- ❌ core 层 import ui 注册表做严格校验：违反「core 纯函数层不依赖 ui」分层，改为 core 宽松透传 + 渲染层兑底。
+
+## 决策 11：表盘预览 = 100vw×100vh 舞台整体缩放（视口缩放策略）
+
+**结论**：新增 `FacePreview.vue`（缩略预览组件）：内层 `.stage` 固定 `100vw×100vh`、与真实全屏逐像素一致地完整渲染表盘，再对整个舞台施加 `transform: translate(-50%,-50%) scale(s)`（`s = min(容器宽/视口宽, 容器高/视口高)`，contain 居中）使其恰好装进任意尺寸容器；`ResizeObserver` + window resize 重算；时间由 `Ticker`（1s、后台暂停）驱动。编辑器表盘下拉（`#option`/`#value` 槽）与 dev 实测台下拉均基于此组件内嵌实时预览。
+
+**理由**：
+- 实现前已逐表盘核实：6 款表盘尺寸全部使用 `clamp(...,Nvmin/Nvw,...)` 视口单位，全屏渲染效果只取决于视口——这决定了「舞台整体缩放」方案的正确性（缩略图与全屏逐像素同构，而非近似重写）。
+- 零适配扩展：未来任意新表盘（同一视口单位约定）自动获得预览能力，无需逐表盘写缩略样式；避免「每个表盘维护一套尺寸参数」的长期维护债。
+- 复用现有 `Ticker`/`getTheme`/`getFace`，预览与屏保共用同一渲染链路与主题。
+
+**备选方案**：
+- ❌ 为每个表盘单独写缩略版组件/样式：N 款表盘 × 2 套实现，必然漂移。
+- ❌ 用 iframe 隔离渲染：单文件产物下无法用外链页面，且无法复用 Vue 表盘组件。
+- ❌ CSS `zoom`/容器查询单位改写：需逐表盘改写单位，仍有漂移风险。
+
+**边界**：预览为纯展示（`pointer-events: none`），不拦截宿主交互；非 Vue 环境（dev 实测页）通过 `src/runtime/preview.ts` 的 `mountFacePreview(host, faceId, opts)` 拿到 `update/destroy` 句柄，展开时惰性挂载、收起即销毁（避免 N 路 ticker 常驻）。
+
+## 决策 12：实测支撑 = window.SnoozePanelTestApi（只读冻结 API）
+
+**结论**：`src/main.ts` 向 `window.SnoozePanelTestApi` 暴露 `Object.freeze({ listFaces: listFaceOptions, mountFacePreview })`（类型以 `satisfies SnoozePanelTestApi` 约束）；供 dev 实测页/自动化验证跨 IIFE 边界消费。
+
+**理由**：
+- 产物是单文件 IIFE，dev 页无法 `import` 内部模块；而 dev 页需求（表盘清单 + 实时预览）必须直取运行时真实实现，才能做到「实测的是真实产物而非复制品」。
+- 只读（冻结）+ 无副作用 + 无外发请求，符合安全红线；不做路径门控（本地实测页与生产页面同源加载，门控收益极低）。
+- 类型与实现同源（`FaceOption` / `FacePreviewOptions` / `FacePreviewHandle` 均从 registry / preview 模块导出），避免双份定义漂移。
+
+**备选方案**：
+- ❌ dev 页硬编码表盘清单：与 `faces/registry.ts` 必然漂移（旧 dev 页正是因为硬编码而失真）。
+- ❌ 暴露完整内部模块/控制器：超出实测需求，扩大 API 面与误用风险。
+- ❌ dev 页引入构建步骤（Vite dev server / 单独 entry）：违背「静态服务器直开、零构建」的实测页定位。
+
+**文档标注**：该 API 明确声明「仅供本地实测页与自动化验证使用，不属于插件业务接口，生产自动化请勿依赖」。

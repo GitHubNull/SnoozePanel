@@ -8,6 +8,7 @@
 
 import { createApp, reactive, type App } from 'vue';
 import PrimeVue from 'primevue/config';
+import ToastService from 'primevue/toastservice';
 import Aura from '@primevue/themes/aura';
 import EditorApp from './EditorApp.vue';
 import { normalizeConfig } from '@/core/config';
@@ -59,6 +60,8 @@ export class SnoozePanelEditorElement extends HTMLElement {
     this.app.use(PrimeVue, {
       theme: { preset: Aura, options: { darkModeSelector: '.snooze-editor-dark' } },
     });
+    // Toast 服务：设备级保存等操作的成功/失败反馈（见 EditorApp.vue）
+    this.app.use(ToastService);
     this.app.mount(this);
   }
 

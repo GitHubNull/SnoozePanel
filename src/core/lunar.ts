@@ -108,9 +108,8 @@ export function solarToLunar(date: Date): LunarDate | null {
   if (offset < 0) return null;
 
   let lunarYear = MIN_YEAR;
-  let daysOfYear = 0;
   while (lunarYear <= MAX_YEAR) {
-    daysOfYear = yearDays(lunarYear);
+    const daysOfYear = yearDays(lunarYear);
     if (offset < daysOfYear) break;
     offset -= daysOfYear;
     lunarYear++;

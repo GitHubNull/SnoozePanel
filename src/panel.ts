@@ -11,6 +11,7 @@
 import { normalizeConfig } from '@/core/config';
 import { resolveDeviceId, isDeviceAllowed } from '@/core/device';
 import type { HassLike } from '@/core/hass';
+import { loadDeviceConfig, mergeConfig } from '@/core/store';
 import { SnoozeController } from '@/runtime/controller';
 
 export class SnoozePanelElement extends HTMLElement {
@@ -68,12 +69,23 @@ export class SnoozePanelElement extends HTMLElement {
     const rawView = this.readViewConfig();
     if (!rawView) return; // 无视图配置 → 零副作用
 
-    const config = normalizeConfig(rawView);
-    if (!config.enabled) return;
+    const viewConfig = normalizeConfig(rawView);
+    if (!viewConfig.enabled) return;
 
     this.deviceId = resolveDeviceId();
-    if (!isDeviceAllowed(this.deviceId, config.devices)) return; // 设备不在白名单 → 不启用
+    if (!isDeviceAllowed(this.deviceId, viewConfig.devices)) return; // 设备不在白名单 → 不启用
 
+    // 异步加载设备级覆盖（后端 .storage/）并合并，再启动控制器；
+    // 后端不可用时 loadDeviceConfig 返回 null，仅用视图 YAML。
+    void this.startWithMergedConfig(viewConfig);
+  }
+
+  /** 加载设备级覆盖并合并配置后启动控制器 */
+  private async startWithMergedConfig(viewConfig: ReturnType<typeof normalizeConfig>): Promise<void> {
+    if (this.controller || !this._hass) return; // 等待期间可能已被拆卸/启动
+    const override = await loadDeviceConfig(this._hass, this.deviceId);
+    if (this.controller || !this._hass) return;
+    const config = mergeConfig(viewConfig, override);
     this.controller = new SnoozeController(config, this._hass, this.deviceId);
     this.controller.start();
   }

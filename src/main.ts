@@ -2,13 +2,16 @@
  * SnoozePanel 入口。
  *
  * 作为 HA「资源」（resource）加载的单文件 JS：
- *  - 注册 `snoozepanel` 自定义元素（视图级门控载体）
+ *  - 注册 `snooze-panel` 自定义元素（视图级门控载体）
  *  - 注册可视化配置编辑器（card GUI editor）
  *  - 向 window.customCards 声明，便于 HA 卡片选择器识别
+ *  - 暴露 window.SnoozePanelTestApi（本地实测页 / 自动化验证支撑，只读、无副作用）
  */
 
 import { registerSnoozePanel } from './panel';
 import { registerSnoozePanelEditor } from './editor/editor';
+import { listFaceOptions, type FaceOption } from './ui/faces/registry';
+import { mountFacePreview, type FacePreviewHandle, type FacePreviewOptions } from './runtime/preview';
 
 registerSnoozePanel();
 registerSnoozePanelEditor();
@@ -21,9 +24,23 @@ interface CustomCardEntry {
   preview?: boolean;
 }
 
+/**
+ * 本地实测支撑 API（仅供 dev/ 实测页与自动化验证消费）。
+ *
+ * 设计约束：只读、无副作用、无任何外发请求；不属于插件业务接口，
+ * 生产自动化请勿依赖。类型与实现见 registry.listFaceOptions / runtime.preview。
+ */
+interface SnoozePanelTestApi {
+  /** 列出全部表盘（纯数据：id / 中文名 / 种类） */
+  listFaces(): FaceOption[];
+  /** 在宿主元素内挂载表盘实时缩略预览（返回句柄用于热切换 / 卸载） */
+  mountFacePreview(host: HTMLElement, faceId: string, opts?: FacePreviewOptions): FacePreviewHandle;
+}
+
 declare global {
   interface Window {
     customCards?: CustomCardEntry[];
+    SnoozePanelTestApi?: SnoozePanelTestApi;
   }
 }
 
@@ -35,7 +52,11 @@ window.customCards.push({
   preview: false,
 });
 
-// eslint-disable-next-line no-console
+window.SnoozePanelTestApi = Object.freeze({
+  listFaces: listFaceOptions,
+  mountFacePreview,
+} satisfies SnoozePanelTestApi);
+
 console.info(
   '%c SnoozePanel %c 已加载 ',
   'background:#5ea0ff;color:#fff;padding:2px 4px;border-radius:3px 0 0 3px',

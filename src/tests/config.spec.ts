@@ -94,4 +94,23 @@ describe('normalizeConfig 配置规范化', () => {
     const c = normalizeConfig({ component_templates: { clock: 'true', bad: 123 } });
     expect(c.component_templates).toEqual({ clock: 'true' });
   });
+
+  it('clock.style 透传任意表盘 id', () => {
+    // 表盘框架后 style 为表盘 id（string），core 层宽松透传，渲染层 getFace 兜底
+    expect(normalizeConfig({ components: { clock: { style: 'chrono' } } }).components.clock.style).toBe('chrono');
+    expect(normalizeConfig({ components: { clock: { style: 'minimal' } } }).components.clock.style).toBe('minimal');
+    expect(normalizeConfig({ components: { clock: { style: 'ring' } } }).components.clock.style).toBe('ring');
+    expect(normalizeConfig({ components: { clock: { style: 'orbit' } } }).components.clock.style).toBe('orbit');
+  });
+
+  it('clock.style 非法/空值回退默认 digital', () => {
+    expect(normalizeConfig({ components: { clock: { style: '' } } }).components.clock.style).toBe('digital');
+    expect(normalizeConfig({ components: { clock: { style: '   ' } } }).components.clock.style).toBe('digital');
+    expect(normalizeConfig({ components: { clock: { style: 123 } } }).components.clock.style).toBe('digital');
+    expect(normalizeConfig({ components: { clock: {} } }).components.clock.style).toBe('digital');
+  });
+
+  it('clock.style 去除首尾空白', () => {
+    expect(normalizeConfig({ components: { clock: { style: '  chrono  ' } } }).components.clock.style).toBe('chrono');
+  });
 });

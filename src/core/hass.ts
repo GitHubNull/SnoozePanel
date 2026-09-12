@@ -15,6 +15,8 @@ export interface HassLike {
   states: Record<string, HassEntityState>;
   user?: { name?: string; is_admin?: boolean };
   callService?: (domain: string, service: string, data?: Record<string, unknown>) => Promise<unknown>;
+  /** HA WebSocket 调用（后端 custom component 配置读写用），mock 环境可缺省 */
+  callWS?: <T = unknown>(msg: Record<string, unknown>) => Promise<T>;
 }
 
 /** 读取实体状态字符串，不存在返回 undefined */

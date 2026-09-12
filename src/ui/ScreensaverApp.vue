@@ -5,8 +5,7 @@ import { isAbsolutePosition } from '@/core/types';
 import { getTheme } from './themes';
 import { evalTemplate } from '@/core/template';
 import type { HassLike } from '@/core/hass';
-import ClockDigital from './components/ClockDigital.vue';
-import ClockAnalog from './components/ClockAnalog.vue';
+import { getFace } from './faces/registry';
 import CalendarView from './components/CalendarView.vue';
 import LunarView from './components/LunarView.vue';
 import WeatherView from './components/WeatherView.vue';
@@ -28,6 +27,9 @@ const now = computed(() => state?.now ?? new Date());
 const hass = computed(() => state?.hass ?? ({ states: {} } as HassLike));
 
 const theme = computed(() => getTheme(props.config.theme));
+
+// 按表盘 id 动态解析入口组件（找不到回退默认表盘）
+const faceComponent = computed(() => getFace(props.config.components.clock.style).component);
 
 // ---- 背景轮播 ----
 const bgIndex = ref(0);
@@ -132,14 +134,13 @@ const themeVars = computed(() => ({
         :class="area"
       >
         <template v-for="item in gridItems(area)" :key="item.key">
-          <ClockDigital
-            v-if="item.key === 'clock' && config.components.clock.style === 'digital'"
-            :now="now" :hour24="config.components.clock.hour24" :seconds="config.components.clock.seconds"
-            :style="{ fontWeight: theme.clockWeight }"
-          />
-          <ClockAnalog
-            v-else-if="item.key === 'clock'"
-            :now="now" :seconds="config.components.clock.seconds"
+          <component
+            :is="faceComponent"
+            v-if="item.key === 'clock'"
+            :now="now"
+            :hour24="config.components.clock.hour24"
+            :seconds="config.components.clock.seconds"
+            :theme="theme"
           />
           <CalendarView
             v-else-if="item.key === 'calendar'"
@@ -172,12 +173,14 @@ const themeVars = computed(() => ({
       class="absolute-item"
       :style="absStyle(item.position)"
     >
-      <ClockDigital
-        v-if="item.key === 'clock' && config.components.clock.style === 'digital'"
-        :now="now" :hour24="config.components.clock.hour24" :seconds="config.components.clock.seconds"
-        :style="{ fontWeight: theme.clockWeight }"
+      <component
+        :is="faceComponent"
+        v-if="item.key === 'clock'"
+        :now="now"
+        :hour24="config.components.clock.hour24"
+        :seconds="config.components.clock.seconds"
+        :theme="theme"
       />
-      <ClockAnalog v-else-if="item.key === 'clock'" :now="now" :seconds="config.components.clock.seconds" />
       <CalendarView
         v-else-if="item.key === 'calendar'" :now="now"
         :week-start="config.components.calendar.week_start"

@@ -1,0 +1,13 @@
+{
+  "domain": "snoozepanel",
+  "name": "SnoozePanel",
+  "codeowners": ["@snoozepanel"],
+  "config_flow": false,
+  "dependencies": [],
+  "documentation": "https://github.com/snoozepanel/snoozepanel",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/snoozepanel/snoozepanel/issues",
+  "requirements": [],
+  "version": "0.2.0"
+}

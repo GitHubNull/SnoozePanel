@@ -100,3 +100,34 @@ export function formatClock(date: Date, hour24: boolean, seconds: boolean): { ma
   const main = seconds ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`;
   return { main, period };
 }
+
+/** 模拟表盘指针角度（度，12 点方向为 0，顺时针） */
+export interface ClockHands {
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+/** 计算时/分/秒针角度。秒针连续平滑（含毫秒），时针/分针随下位单位连续转动。 */
+export function clockHands(date: Date): ClockHands {
+  const h = date.getHours() % 12;
+  const m = date.getMinutes();
+  const s = date.getSeconds();
+  const ms = date.getMilliseconds();
+  const sec = s + ms / 1000;
+  return {
+    hour: (h + m / 60) * 30, // 360/12
+    minute: (m + sec / 60) * 6, // 360/60
+    second: sec * 6,
+  };
+}
+
+/** 日期子表盘指针角度：一个月按 31 天计，1 号在 0 度，每天转 360/31 度（机械表常见 31 日刻度环） */
+export function dateSubDialAngle(date: Date): number {
+  return ((date.getDate() - 1) / 31) * 360;
+}
+
+/** 星期子表盘指针角度：周日=0，每天转 360/7 度 */
+export function weekdaySubDialAngle(date: Date): number {
+  return (date.getDay() / 7) * 360;
+}

@@ -1,20 +1,21 @@
 <script setup lang="ts">
+/**
+ * 数字时钟表盘：大号时分 + 可选秒与上/下午标识。
+ * 迁移自原 ui/components/ClockDigital.vue，接入统一表盘 props。
+ */
 import { computed } from 'vue';
 import { formatClock } from '@/core/clock';
+import type { FaceProps } from '../types';
 
-const props = defineProps<{
-  now: Date;
-  hour24: boolean;
-  seconds: boolean;
-}>();
+const props = defineProps<FaceProps>();
 
 const time = computed(() => formatClock(props.now, props.hour24, props.seconds));
 </script>
 
 <template>
-  <div class="clock-digital">
+  <div class="clock-digital" :style="{ fontFamily: theme.fontFamily, fontWeight: theme.clockWeight, color: theme.text }">
     <span class="time">{{ time.main }}</span>
-    <span v-if="time.period" class="period">{{ time.period }}</span>
+    <span v-if="time.period" class="period" :style="{ color: theme.textSecondary }">{{ time.period }}</span>
   </div>
 </template>
 
@@ -28,7 +29,6 @@ const time = computed(() => formatClock(props.now, props.hour24, props.seconds))
 }
 .time {
   font-size: clamp(64px, 16vw, 220px);
-  font-weight: inherit;
   letter-spacing: 0.02em;
 }
 .period {

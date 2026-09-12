@@ -19,14 +19,12 @@ export function evalTemplate(expr: string | null | undefined, hass: HassLike, fa
   if (!expr || !expr.trim()) return fallback;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const fn = new Function('hass', 'states', 'user', `"use strict"; return (${expr});`);
     const result = fn(hass, hass.states, hass.user);
     return Boolean(result);
   } catch (err) {
     if (!warned.has(expr)) {
       warned.add(expr);
-      // eslint-disable-next-line no-console
       console.warn('[SnoozePanel] display_template 求值失败，已降级为默认显隐：', expr, err);
     }
     return fallback;

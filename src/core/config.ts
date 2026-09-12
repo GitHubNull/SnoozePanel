@@ -140,7 +140,9 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
     components: {
       clock: {
         show: bool(clock.show, d.components.clock.show),
-        style: clock.style === 'analog' ? 'analog' : 'digital',
+        // style 为表盘 id：非空字符串即透传，是否真实存在由渲染层 getFace 回退兜底；
+        // core 纯函数层不依赖 ui 注册表，保持纯净。
+        style: typeof clock.style === 'string' && clock.style.trim() ? clock.style.trim() : d.components.clock.style,
         hour24: bool(clock.hour24, d.components.clock.hour24),
         seconds: bool(clock.seconds, d.components.clock.seconds),
         position: normalizePosition(clock.position, d.components.clock.position),

@@ -3,154 +3,370 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SnoozePanel 本地实测</title>
+  <title>SnoozePanel 本地实测台</title>
+  <!--
+    本地实测台（静态服务器直开，无构建步骤）：
+      python -m http.server 8765  →  http://127.0.0.1:8765/dev/
+    逻辑全部在 dev/dev.js（// @ts-check + JSDoc，由 tsconfig.dev.json 做类型检查）。
+  -->
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #1a1d24; color: #eee; }
-    .panel { max-width: 760px; margin: 0 auto; }
-    h1 { font-size: 20px; }
-    .card { background: #242833; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; }
-    button { background: #5ea0ff; color: #fff; border: 0; border-radius: 6px; padding: 10px 18px; font-size: 14px; cursor: pointer; margin-right: 8px; margin-bottom: 8px; }
-    button.ghost { background: #3a4152; }
-    label { display: block; margin: 10px 0 4px; font-size: 13px; opacity: 0.8; }
-    select, input { padding: 6px 8px; border-radius: 6px; border: 1px solid #444; background: #2c3140; color: #eee; }
-    .row { display: flex; gap: 16px; flex-wrap: wrap; }
-    .row > div { flex: 1; min-width: 160px; }
-    code { background: #000; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
-    #log { font-family: monospace; font-size: 12px; background: #10131a; padding: 10px; border-radius: 6px; max-height: 160px; overflow: auto; white-space: pre-wrap; }
+    :root {
+      --bg: #0c0f14;
+      --card: #151a23;
+      --card-2: #1b2130;
+      --border: #262f40;
+      --text: #e9edf5;
+      --dim: #8b95a8;
+      --accent: #5ea0ff;
+      --accent-soft: rgba(94, 160, 255, 0.14);
+      --ok: #4fc07d;
+      --warn: #e8b45a;
+      --error: #ef6b6b;
+      --radius: 14px;
+      --radius-sm: 9px;
+      --mono: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(1200px 500px at 18% -10%, rgba(94, 160, 255, 0.10), transparent 60%),
+        radial-gradient(900px 420px at 92% 0%, rgba(122, 92, 255, 0.08), transparent 55%),
+        var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .page { max-width: 1180px; margin: 0 auto; padding: 26px 22px 80px; }
+
+    /* ============ 顶栏 ============ */
+    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
+    .brand h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: 0.3px; }
+    .brand h1 .dot { color: var(--accent); }
+    .brand p { margin: 0; color: var(--dim); font-size: 13px; }
+    .topbar-right { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 12px; border-radius: 999px;
+      background: var(--card); border: 1px solid var(--border);
+      font-size: 12.5px; color: var(--dim);
+    }
+    .badge::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .badge.ok { color: var(--ok); border-color: rgba(79, 192, 125, 0.35); }
+    .badge.warn { color: var(--warn); border-color: rgba(232, 180, 90, 0.35); }
+    .badge.error { color: var(--error); border-color: rgba(239, 107, 107, 0.4); }
+    .badge.accent { color: var(--accent); border-color: rgba(94, 160, 255, 0.4); }
+
+    /* ============ 栅格与卡片 ============ */
+    .grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+    }
+    .card.wide { grid-column: 1 / -1; }
+    .card h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; font-size: 15.5px; }
+    .card h2::before { content: ''; width: 4px; height: 15px; border-radius: 2px; background: var(--accent); }
+    .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+    .card-head h2 { margin: 0; }
+    .card-head + * { margin-top: 14px; }
+    .head-actions { display: flex; align-items: center; gap: 10px; }
+    .sub-card { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: var(--radius-sm); }
+    .sub-card h3 { margin: 0; font-size: 14px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+    /* ============ 表单控件 ============ */
+    .field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px; }
+    .field > label { font-size: 13px; color: var(--dim); }
+    select, input[type="number"] {
+      width: 100%; padding: 8px 10px;
+      background: var(--card-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: 13.5px; font-family: inherit;
+    }
+    select:focus, input:focus { outline: none; border-color: var(--accent); }
+    .inline-input { display: flex; align-items: center; gap: 10px; }
+    .inline-input input { width: 110px; flex: none; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip-btn {
+      padding: 7px 14px; border-radius: 999px; font-family: inherit;
+      border: 1px solid var(--border); background: var(--card-2);
+      color: var(--dim); cursor: pointer; font-size: 13px;
+      transition: color 0.12s, border-color 0.12s;
+    }
+    .chip-btn:hover { color: var(--text); border-color: #3a4a63; }
+    .chip-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .chip { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; }
+    .chip.warn { color: var(--warn); background: rgba(232, 180, 90, 0.12); border: 1px solid rgba(232, 180, 90, 0.35); }
+
+    /* ============ 按钮 ============ */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px 16px; border: 0; border-radius: 8px;
+      background: var(--accent); color: #08111f;
+      font-size: 13.5px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: filter 0.15s, border-color 0.15s, opacity 0.15s;
+    }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); font-weight: 500; }
+    .btn.ghost:hover { filter: none; border-color: #3a4a63; }
+    .btn.small { padding: 6px 12px; font-size: 12.5px; }
+    .btn.tiny { padding: 4px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.42; cursor: not-allowed; filter: none; }
+    .btn[data-busy="1"] { pointer-events: none; opacity: 0.75; }
+    .btn[data-busy="1"]::before {
+      content: ''; width: 12px; height: 12px; flex: none;
+      border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
+      display: inline-block; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+    .hint { color: var(--dim); font-size: 12.5px; line-height: 1.65; margin: 10px 0 0; }
+    .dim { color: var(--dim); font-size: 12.5px; }
+    code { font-family: var(--mono); background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+
+    /* ============ 表盘下拉（实时迷你预览） ============ */
+    .face-select { position: relative; }
+    .face-select-trigger {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      padding: 8px 12px; font-family: inherit; text-align: left;
+      background: var(--card-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .face-select-trigger:hover { border-color: #3a4a63; }
+    .face-select-trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .face-select-trigger:disabled { opacity: 0.5; cursor: not-allowed; }
+    .face-select-name { flex: 1; font-size: 14px; }
+    .chevron {
+      width: 8px; height: 8px; flex: none; margin-left: 2px;
+      border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim);
+      transform: rotate(45deg); transition: transform 0.15s;
+    }
+    .face-select-trigger[aria-expanded="true"] .chevron { transform: rotate(-135deg); }
+    .face-select-panel {
+      position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
+      max-height: 340px; overflow: auto; padding: 6px;
+      background: var(--card-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+    }
+    .face-option {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      padding: 6px 8px; border: 0; border-radius: 7px;
+      background: none; color: var(--text); font-family: inherit; font-size: 14px;
+      cursor: pointer; text-align: left;
+    }
+    .face-option:hover { background: rgba(94, 160, 255, 0.10); }
+    .face-option[aria-selected="true"] { background: var(--accent-soft); }
+    .face-option-name { flex: 1; }
+    .kind-badge {
+      flex: none; font-size: 12px; line-height: 1; padding: 4px 9px;
+      border-radius: 999px; color: var(--accent); background: var(--accent-soft);
+    }
+    .face-thumb {
+      width: 96px; height: 54px; flex: none; display: block;
+      border-radius: 6px; overflow: hidden;
+      border: 1px solid var(--border); background: #000;
+    }
+    /* FacePreview 根元素铺满宿主（含大预览） */
+    .preview-host > .face-preview { width: 100%; height: 100%; }
+    /* 大预览：放大容器并加宽卡片，配合 zoom≈2 让表盘清晰可读 */
+    .big-preview {
+      width: 520px; height: 300px; max-width: 100%;
+      border-radius: 10px; overflow: hidden;
+      border: 1px solid var(--border); background: #000;
+    }
+    section.card:has(.big-preview) { grid-column: span 2; }
+
+    /* ============ 编辑器 ============ */
+    .editor-frame {
+      /* 供编辑器内部样式使用的 HA 变量近似值（深色化，避免白底突兀） */
+      --card-background-color: #10141d;
+      --divider-color: #2a3346;
+      --secondary-text-color: #8b95a8;
+      --primary-color: #5ea0ff;
+      background: #10141d; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 16px 18px;
+      color: var(--text);
+    }
+    .device-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .device-list li {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 6px 10px; font-size: 13px;
+      background: var(--card-2); border: 1px solid var(--border); border-radius: 7px;
+    }
+    .device-list code { color: var(--accent); }
+
+    /* ============ 运行日志 ============ */
+    .log {
+      list-style: none; margin: 0; padding: 10px 12px;
+      background: #0a0d13; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      max-height: 260px; overflow: auto;
+      font-family: var(--mono); font-size: 12.5px;
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .log-line { display: flex; gap: 8px; line-height: 1.5; }
+    .log-line .time { flex: none; color: #55617a; }
+    .log-line .msg { white-space: pre-wrap; word-break: break-word; }
+    .log-line.info .msg { color: #aab4c6; }
+    .log-line.ok .msg { color: var(--ok); }
+    .log-line.warn .msg { color: var(--warn); }
+    .log-line.error .msg { color: var(--error); }
+
+    /* ============ Toast（右上角） ============ */
+    .toast-stack { position: fixed; top: 18px; right: 18px; z-index: 999; display: flex; flex-direction: column; gap: 10px; width: 320px; }
+    .toast {
+      background: var(--card-2); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+      border-radius: 10px; padding: 10px 14px; cursor: pointer;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+      animation: toast-in 0.22s ease-out;
+    }
+    .toast.success { border-left-color: var(--ok); }
+    .toast.error { border-left-color: var(--error); }
+    .toast.warning { border-left-color: var(--warn); }
+    .toast-title { font-size: 13.5px; font-weight: 600; }
+    .toast-detail { margin-top: 3px; font-size: 12.5px; color: var(--dim); }
+    .toast.leave { opacity: 0; transform: translateX(14px); transition: opacity 0.22s, transform 0.22s; }
+    @keyframes toast-in { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
-  <div class="panel">
-    <h1>SnoozePanel 本地实测（mock hass）</h1>
+  <!-- Toast 容器（右上角轻提示） -->
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
-    <div class="card">
-      <label>主题</label>
-      <select id="theme">
-        <option value="midnight">深夜（深色）</option>
-        <option value="paper">宣纸（浅色）</option>
-      </select>
-      <label>时钟样式</label>
-      <select id="clockStyle">
-        <option value="digital">数字时钟</option>
-        <option value="analog">模拟表盘</option>
-      </select>
-      <label>背景类型</label>
-      <select id="bgType">
-        <option value="color">纯色</option>
-        <option value="gradient">渐变</option>
-      </select>
-      <div style="margin-top:12px">
-        <button id="activate">立即触发屏保</button>
-        <button id="editor" class="ghost">打开配置编辑器</button>
+  <div class="page">
+    <!-- ============ 顶栏 ============ -->
+    <header class="topbar">
+      <div class="brand">
+        <h1>SnoozePanel <span class="dot">本地实测台</span></h1>
+        <p>mock hass · 构建产物直载（tmp/dist）· 零外发请求</p>
       </div>
-      <p style="font-size:12px;opacity:0.7">屏保激活后，点击/触摸任意处或按任意键退出（含 2 秒冷却）。</p>
-    </div>
+      <div class="topbar-right">
+        <div class="badges">
+          <span class="badge warn" id="badge-bundle">产物加载中…</span>
+          <span class="badge ok" id="badge-backend">mock 后端就绪</span>
+          <span class="badge" id="badge-runtime">未挂载</span>
+        </div>
+        <button type="button" class="btn ghost small" id="btn-reload-bundle" hidden>重新加载产物</button>
+      </div>
+    </header>
 
-    <div class="card">
-      <label>运行日志</label>
-      <div id="log"></div>
-    </div>
+    <main class="grid">
+      <!-- ============ 卡片一：屏保运行 ============ -->
+      <section class="card">
+        <h2>屏保运行</h2>
 
-    <div class="card" style="background:#fff;color:#222" id="editor-card" hidden>
-      <label style="color:#222">配置编辑器（PrimeVue 中文界面）</label>
-      <div id="editor-host"></div>
-    </div>
+        <div class="field">
+          <label for="theme">主题</label>
+          <select id="theme">
+            <option value="midnight" selected>深夜（深色）</option>
+            <option value="paper">宣纸（浅色）</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="bg-type">背景类型</label>
+          <select id="bg-type">
+            <option value="color" selected>纯色</option>
+            <option value="gradient">渐变</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>闲置触发时长</label>
+          <div class="chips" id="idle-chips">
+            <button type="button" class="chip-btn" data-idle="5">5 秒</button>
+            <button type="button" class="chip-btn active" data-idle="15">15 秒</button>
+            <button type="button" class="chip-btn" data-idle="60">60 秒</button>
+            <button type="button" class="chip-btn" data-idle="180">3 分钟</button>
+          </div>
+          <div class="inline-input">
+            <input type="number" id="idle-custom" min="5" max="3600" step="1" value="15" aria-label="自定义闲置秒数" />
+            <span class="dim">秒（5–3600 自定义）</span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="btn" id="btn-mount" disabled>挂载运行时</button>
+          <button type="button" class="btn" id="btn-trigger" disabled>触发屏保</button>
+          <button type="button" class="btn ghost" id="btn-exit" disabled>退出屏保</button>
+          <button type="button" class="btn ghost" id="btn-unmount" disabled>卸载运行时</button>
+        </div>
+        <p class="hint">
+          触发/退出走生产同款 <code>screensaver_entity</code> 通路（<code>input_boolean.screensaver</code> + 重赋
+          <code>hass</code> → <code>syncFromEntity</code>）。控制面板选项在「挂载 / 重新应用」时写入运行时配置。
+        </p>
+      </section>
+
+      <!-- ============ 卡片二：表盘 ============ -->
+      <section class="card">
+        <h2>表盘</h2>
+
+        <div class="field">
+          <label>选择表盘（实时预览）</label>
+          <div class="face-select" id="face-select">
+            <button type="button" class="face-select-trigger" id="face-trigger" aria-haspopup="listbox" aria-expanded="false" disabled>
+              <span class="face-thumb preview-host" id="face-trigger-thumb"></span>
+              <span class="face-select-name" id="face-trigger-name">产物加载中…</span>
+              <span class="kind-badge" id="face-trigger-kind" hidden></span>
+              <span class="chevron" aria-hidden="true"></span>
+            </button>
+            <div class="face-select-panel" id="face-panel" role="listbox" aria-label="表盘列表" hidden></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>选中表盘大预览</label>
+          <div class="big-preview preview-host" id="face-big"></div>
+        </div>
+        <p class="hint">
+          预览方案：<code>100vw×100vh</code> 舞台整体缩放（与全屏渲染逐像素一致），随主题联动，新增表盘零适配。
+        </p>
+      </section>
+
+      <!-- ============ 卡片三：配置编辑器 ============ -->
+      <section class="card wide">
+        <div class="card-head">
+          <h2>配置编辑器</h2>
+          <div class="head-actions">
+            <span class="chip warn" id="editor-dirty" hidden>有未应用变更</span>
+            <button type="button" class="btn ghost small" id="btn-editor-toggle" aria-expanded="false" aria-controls="editor-body">展开</button>
+          </div>
+        </div>
+
+        <div id="editor-body" hidden>
+          <div class="editor-frame">
+            <div id="editor-host"></div>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn" id="btn-reapply" disabled>重新应用配置</button>
+            <span class="dim">「保存为本设备配置」写入 mock 后端；「重新应用」卸载运行时后按最新配置重挂。</span>
+          </div>
+
+          <div class="sub-card">
+            <div class="card-head">
+              <h3>mock 后端已保存设备</h3>
+              <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
+            </div>
+            <ul class="device-list" id="device-list">
+              <li class="dim">尚未保存任何设备</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 卡片四：运行日志 ============ -->
+      <section class="card wide">
+        <div class="card-head">
+          <h2>运行日志</h2>
+          <button type="button" class="btn ghost small" id="btn-clear-log">清空</button>
+        </div>
+        <ul class="log" id="log"></ul>
+      </section>
+    </main>
   </div>
 
-  <!-- 屏保挂载点由插件动态创建，无需占位 -->
-
-  <script type="module">
-    // ---- mock hass ----
-    const mockHass = {
-      states: {
-        'weather.home': { entity_id: 'weather.home', state: 'sunny', attributes: { temperature: 26, humidity: 45 }, last_changed: '', last_updated: '' },
-        'sensor.temp': { entity_id: 'sensor.temp', state: '23.5', attributes: {}, last_changed: '', last_updated: '' },
-        'binary_sensor.someone_home': { entity_id: 'binary_sensor.someone_home', state: 'on', attributes: {}, last_changed: '', last_updated: '' },
-        'sun.sun': { entity_id: 'sun.sun', state: 'above_horizon', attributes: { next_rising: '2026-09-12T06:00:00+08:00', next_setting: '2026-09-11T18:30:00+08:00' }, last_changed: '', last_updated: '' },
-        'input_boolean.screensaver': { entity_id: 'input_boolean.screensaver', state: 'off', attributes: {}, last_changed: '', last_updated: '' },
-      },
-      user: { name: 'admin', is_admin: true },
-      callService: async (domain, service, data) => {
-        log(`callService ${domain}.${service} ${JSON.stringify(data)}`);
-        const id = data?.entity_id;
-        if (id && mockHass.states[id]) {
-          mockHass.states[id].state = service === 'turn_on' ? 'on' : 'off';
-        }
-      },
-    };
-
-    function log(msg) {
-      const el = document.getElementById('log');
-      const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-      el.textContent += `[${time}] ${msg}\n`;
-      el.scrollTop = el.scrollHeight;
-    }
-
-    // ---- 动态加载构建产物（IIFE，用 script 标签注入）----
-    await new Promise((resolvePromise) => {
-      const s = document.createElement('script');
-      s.src = '../tmp/dist/snoozepanel.js?t=' + Date.now();
-      s.onload = () => { log('snoozepanel.js 已加载'); resolvePromise(); };
-      s.onerror = () => { log('未找到产物，请先 pnpm build'); resolvePromise(); };
-      document.head.appendChild(s);
-    });
-
-    // 从产物中暴露的注册函数不可直接访问（IIFE），这里直接 new 元素驱动
-    function buildConfig() {
-      const theme = document.getElementById('theme').value;
-      const paper = theme === 'paper';
-      return {
-        enabled: true,
-        idle_seconds: 60,
-        exit_cooldown_seconds: 2,
-        theme,
-        components: {
-          clock: { show: true, style: document.getElementById('clockStyle').value, hour24: true, seconds: true, position: 'center' },
-          calendar: { show: true, week_start: 1, show_week_number: true, format: 'M月D日 dddd', position: 'bottom_center' },
-          lunar: { show: true, format: '{lunar_month}{lunar_day} {ganzhi}{zodiac}年', position: 'bottom_center' },
-          weather: { show: true, entity: 'weather.home', position: 'top_right' },
-          texts: [{ content: '室温 {sensor.temp}°C', position: 'top_left' }],
-        },
-        background: paper
-          ? { type: 'gradient', color: '#f5f1e8', gradient: { from: '#f5f1e8', to: '#e8e0cf', angle: 160 }, images: [], interval_seconds: 30, dim: 0 }
-          : { type: document.getElementById('bgType').value, color: '#0b1020', gradient: { from: '#0b1020', to: '#1b2a4a', angle: 160 }, images: [], interval_seconds: 30, dim: 0.45 },
-      };
-    }
-
-    let el = null;
-    document.getElementById('activate').addEventListener('click', () => {
-      if (!customElements.get('snooze-panel')) { log('snooze-panel 元素未注册'); return; }
-      // 直接实例化元素并驱动
-      el = document.createElement('snooze-panel');
-      el.setConfig({ snoozepanel: buildConfig() });
-      el.hass = mockHass;
-      document.body.appendChild(el);
-      log('已挂载 snooze-panel 元素（idle 60s，或等待自动触发）');
-      // 立即触发：直接访问控制器不便，这里把 idle 设为极小再重挂
-      el.remove();
-      const cfg = buildConfig();
-      cfg.idle_seconds = 1;
-      el = document.createElement('snooze-panel');
-      el.setConfig({ snoozepanel: cfg });
-      el.hass = mockHass;
-      document.body.appendChild(el);
-      log('idle 已设为 1s，屏保即将触发…');
-    });
-
-    document.getElementById('editor').addEventListener('click', () => {
-      if (!customElements.get('snooze-panel-editor')) { log('编辑器未注册'); return; }
-      // 在当前页面内联渲染编辑器（避免 window.open 弹窗拦截）
-      const host = document.getElementById('editor-host');
-      host.innerHTML = '';
-      document.getElementById('editor-card').hidden = false;
-      const ed = document.createElement('snooze-panel-editor');
-      ed.hass = mockHass;
-      ed.setConfig({ snoozepanel: buildConfig() });
-      ed.addEventListener('config-changed', (e) => log('config-changed: ' + JSON.stringify(e.detail.config).slice(0, 120) + '…'));
-      host.appendChild(ed);
-      host.scrollIntoView({ behavior: 'smooth' });
-      log('编辑器已在页面下方渲染');
-    });
-  </script>
+  <script type="module" src="./dev.js"></script>
 </body>
 </html>

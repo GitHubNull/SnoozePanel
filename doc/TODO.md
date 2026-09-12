@@ -4,10 +4,10 @@
 
 ## P0 — 当前版本必须说明的限制与最高优先级待办
 
-- [ ] **设备级配置尚无后端持久化（最高优先级）**：当前 device id 仅存浏览器 `localStorage`，配置主体在视图 YAML。**必须实现 HA 后端 custom component 来持久化每台设备的配置记录**——否则 HA 重启、清浏览器缓存、换 App/设备都会导致配置丢失或错乱。方案见 `doc/ARCHITECTURE.md` 决策 9。
 - [ ] **视图配置热更新延迟**：HA 前端对视图 raw YAML 的修改需要**刷新页面**才能被 `<snooze-panel>` 元素感知（HA 的 `config-changed` 仅覆盖卡片级配置）。规避：改完视图 YAML 后按 F5。
 - [ ] **多视图同时启用时的单例约束**：`SnoozeController` 是单例，若多个视图都配置了 `snoozepanel:`，切换视图时以后激活的视图配置为准。当前实现已正确处理（`location-changed` 重置），但多视图配置不一致时可能产生用户困惑。
 - [ ] **`weather` 实体属性兼容性**：不同天气集成（如彩云、和风、OpenWeatherMap）的 `attributes` 字段存在差异。当前 WeatherView 读取 `temperature` / `humidity` / `state`，已在生产环境 `weather.forecast_home`（Met.no）验证通过；其他集成若字段缺失会显示占位符而非报错。
+- [ ] **后端 custom component 真实 HA 部署联调（尚未验证）**：`custom_components/snoozepanel/` 代码与前端 `store.ts` 封装已实现，本地 mock 验证通过；但**尚未在真实 HA 部署并做「set_config → 重启 HA → get_config 读回一致」的断电恢复验证**（部署需重启生产 HA，暂未执行）。联调步骤见 `doc/使用教程/02-进阶配置.md`。
 
 ## P1 — 下一版本应考虑
 
@@ -26,7 +26,7 @@
 ## P3 — 远期愿景
 
 - [ ] **HACS 默认仓库收录**：需社区使用量与维护记录积累。
-- [ ] **屏保皮肤市场**：用户可分享/下载主题包（背景图+配色+组件布局）。
+- [ ] **屏保皮肤/表盘市场**：用户可分享/下载主题包（背景图+配色+组件布局）与自定义表盘包（`src/ui/faces/<id>/` 目录）。
 - [ ] **与 HA 原生「屏保」设置整合**：若 HA 未来开放官方屏保 API，迁移到官方机制。
 
 ## 已明确不做
