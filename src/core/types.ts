@@ -111,6 +111,8 @@ export interface WeatherComponent {
 export interface TextComponent {
   content: string;
   layout: ComponentLayout;
+  /** 是否显示（缺省视为显示，兼容旧配置）；关闭后屏保不渲染该项 */
+  show?: boolean;
   /** 自定义字体颜色 */
   color?: string;
 }

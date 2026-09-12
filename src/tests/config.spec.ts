@@ -159,6 +159,19 @@ describe('normalizeConfig 配置规范化', () => {
     expect(c.components.texts[1].layout).toEqual({ x: 15, y: 10, w: 30 });
   });
 
+  it('texts 的 show 缺省为 true，显式 false 保留', () => {
+    const c = normalizeConfig({
+      components: {
+        texts: [
+          { content: 'A', show: true },
+          { content: 'B', show: false },
+          { content: 'C' },
+        ],
+      },
+    });
+    expect(c.components.texts.map((t) => t.show)).toEqual([true, false, true]);
+  });
+
   it('component_templates 仅保留字符串值', () => {
     const c = normalizeConfig({ component_templates: { clock: 'true', bad: 123 } });
     expect(c.component_templates).toEqual({ clock: 'true' });

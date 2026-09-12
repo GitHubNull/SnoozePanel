@@ -10,11 +10,11 @@
     本地实测台（静态服务器直开，无构建步骤）：
       python -m http.server 8765  →  http://127.0.0.1:8765/dev/
 
-    页面布局（设计软件式：上中下 + 左中右，整页占满视口，无水平留白）：
-      - 上（顶栏）：品牌 / 状态徽章 / 运行时操作（挂载·重新应用·触发·退出·卸载·重载产物）
-      - 中（主内容）：内嵌真实产物编辑器 snooze-panel-editor
-                     → 其内部即「左工具栏 / 中预览画布 / 右属性面板」三区
-      - 下（底栏）：运行日志 + mock 后端设备（Toast 走右上角浮层）
+    页面布局（外层测试装备，不侵入插件内部）：
+      - 顶栏（上）：品牌 / 状态徽章 / 运行时操作（挂载·重新应用·触发·退出·卸载·重载产物），可收起为细条
+      - 舞台（中）：四周留 16px 间隔的背板（圆角 / 描边 / 阴影），内嵌真实产物编辑器 snooze-panel-editor
+                     → 插件自身即「菜单栏 / 分类区 / 预览画布 / 属性区 / 状态栏」五区
+      - 底栏（下）：运行日志 + mock 后端设备，可向上拖高 / 收起 / 恢复默认高度
 
     逻辑全部在 dev/dev.js（// @ts-check + JSDoc，由 tsconfig.dev.json 做类型检查）。
     配置编辑器直接内嵌真实产物（mountEditor），与 HA 环境完全一致，配置以编辑器为单一来源。
@@ -35,6 +35,8 @@
       --radius: 14px;
       --radius-sm: 9px;
       --mono: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+      --topbar-h: 40px;
+      --bottombar-h: 200px;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; }
@@ -48,14 +50,25 @@
       min-height: 100vh;
     }
 
+    /* 底栏拖拽期间全局光标 */
+    html.sp-dev-resizing { cursor: row-resize !important; user-select: none; }
+    html.sp-dev-resizing * { cursor: row-resize !important; }
+
     /* ============ 上中下骨架：整页占满视口、无水平留白 ============ */
     .page { max-width: 100%; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* ============ 顶栏（上）：全局控件 ============ */
-    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    /* ============ 顶栏（上）：全局控件（可收起为细条） ============ */
+    .topbar { display: flex; align-items: center; gap: 14px; padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .topbar.slim { padding: 0 20px; height: var(--topbar-h); }
+    .topbar-full { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; width: 100%; }
+    .topbar.slim .topbar-full { display: none; }
+    .topbar-slim { display: none; align-items: center; gap: 12px; width: 100%; }
+    .topbar.slim .topbar-slim { display: flex; }
+    .topbar-slim .topbar-spacer { flex: 1; }
     .brand h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: 0.3px; }
     .brand h1 .dot { color: var(--accent); }
     .brand p { margin: 0; color: var(--dim); font-size: 13px; }
+    .topbar-slim .brand h1 { font-size: 16px; margin: 0; }
     .topbar-right { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
     .badges { display: flex; flex-wrap: wrap; gap: 8px; }
     .badge {
@@ -70,17 +83,30 @@
     .badge.error { color: var(--error); border-color: rgba(239, 107, 107, 0.4); }
     .badge.accent { color: var(--accent); border-color: rgba(94, 160, 255, 0.4); }
 
-    /* ============ 主内容区（中）：内嵌真实编辑器（左工具栏 / 中预览 / 右属性） ============ */
-    .main-content { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--card); }
-    .editor-host { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
-    /* 自定义元素默认 inline，需显式撑满宿主，编辑器三区外壳才能铺满 */
-    .editor-host > snooze-panel-editor { display: block; flex: 1; min-width: 0; min-height: 0; }
+    /* ============ 舞台（中）：预留背板 + 与顶/底栏的间隔 ============ */
+    .stage { flex: 1; min-height: 0; display: flex; padding: 16px; overflow: hidden; }
+    .stage-board {
+      flex: 1; min-width: 0; min-height: 0; position: relative;
+      border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+      background: #05070b;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    }
+    /* 自定义元素默认 inline，需显式撑满背板，插件五区外壳才能铺满 */
+    .stage-board > snooze-panel-editor { display: block; width: 100%; height: 100%; }
 
-    /* ============ 底栏（下）：运行日志 + mock 后端设备 ============ */
-    .bottombar { display: flex; gap: 20px; padding: 12px 20px; background: var(--card); border-top: 1px solid var(--border); flex-shrink: 0; max-height: 200px; }
-    .bottombar .log-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .bottombar .device-col { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; }
-    .bottombar .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    /* ============ 底栏（下）：运行日志 + mock 后端设备（可拖高/收起） ============ */
+    .bottombar { position: relative; height: var(--bottombar-h); flex-shrink: 0; background: var(--card); border-top: 1px solid var(--border); overflow: hidden; }
+    .bottombar.collapsed { height: 38px; }
+    .bottombar-resizer { position: absolute; top: 0; left: 0; right: 0; height: 6px; cursor: row-resize; z-index: 6; touch-action: none; }
+    .bottombar-resizer:hover { background: var(--accent); opacity: 0.45; }
+    .bottom-full { display: flex; gap: 20px; height: 100%; padding: 12px 20px; }
+    .bottombar.collapsed .bottom-full { display: none; }
+    .bottom-slim { display: none; align-items: center; justify-content: space-between; gap: 12px; height: 100%; padding: 0 20px; }
+    .bottombar.collapsed .bottom-slim { display: flex; }
+    .bottombar .log-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .bottombar .device-col { width: 320px; flex-shrink: 0; min-height: 0; display: flex; flex-direction: column; }
+    .bottombar .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-shrink: 0; }
+    .bottombar .card-head .head-actions { display: flex; align-items: center; gap: 8px; }
     .panel-title { font-size: 14px; font-weight: 600; margin: 0; color: var(--text); }
 
     /* ============ 按钮 ============ */
@@ -150,11 +176,10 @@
     .toast.leave { opacity: 0; transform: translateX(14px); transition: opacity 0.22s, transform 0.22s; }
     @keyframes toast-in { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
 
-    /* ============ 窄屏降级：三区改为纵向堆叠（HA 卡片编辑器等窄容器） ============ */
+    /* ============ 窄屏降级：底栏两列改为纵向堆叠 ============ */
     @media (max-width: 900px) {
-      .bottombar { flex-direction: column; max-height: none; }
+      .bottom-full { flex-direction: column; }
       .bottombar .device-col { width: auto; }
-      .log { max-height: 160px; }
     }
   </style>
 </head>
@@ -163,52 +188,72 @@
   <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
   <div class="page">
-    <!-- ============ 顶栏（上）：全局控件 ============ -->
-    <header class="topbar">
-      <div class="brand">
-        <h1>SnoozePanel <span class="dot">本地实测台</span></h1>
-        <p>mock hass · 构建产物直载（tmp/dist）· 零外发请求</p>
+    <!-- ============ 顶栏（上）：全局控件（可收起） ============ -->
+    <header class="topbar" id="topbar">
+      <div class="topbar-full">
+        <div class="brand">
+          <h1>SnoozePanel <span class="dot">本地实测台</span></h1>
+          <p>mock hass · 构建产物直载（tmp/dist）· 零外发请求</p>
+        </div>
+        <div class="topbar-right">
+          <div class="badges">
+            <span class="badge warn" id="badge-bundle">产物加载中…</span>
+            <span class="badge" id="badge-dirty">配置同步中…</span>
+            <span class="badge ok" id="badge-backend">mock 后端就绪</span>
+            <span class="badge" id="badge-runtime">未挂载</span>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn" id="btn-mount" disabled>挂载运行时</button>
+            <button type="button" class="btn ghost" id="btn-reapply" disabled>重新应用配置</button>
+            <button type="button" class="btn" id="btn-trigger" disabled>触发屏保</button>
+            <button type="button" class="btn ghost" id="btn-exit" disabled>退出屏保</button>
+            <button type="button" class="btn ghost" id="btn-unmount" disabled>卸载运行时</button>
+            <button type="button" class="btn ghost small" id="btn-reload-bundle" hidden>重新加载产物</button>
+            <button type="button" class="btn ghost small" id="btn-top-collapse" title="收起顶栏">收起顶栏</button>
+          </div>
+        </div>
       </div>
-      <div class="topbar-right">
-        <div class="badges">
-          <span class="badge warn" id="badge-bundle">产物加载中…</span>
-          <span class="badge" id="badge-dirty">配置同步中…</span>
-          <span class="badge ok" id="badge-backend">mock 后端就绪</span>
-          <span class="badge" id="badge-runtime">未挂载</span>
-        </div>
-        <div class="actions">
-          <button type="button" class="btn" id="btn-mount" disabled>挂载运行时</button>
-          <button type="button" class="btn ghost" id="btn-reapply" disabled>重新应用配置</button>
-          <button type="button" class="btn" id="btn-trigger" disabled>触发屏保</button>
-          <button type="button" class="btn ghost" id="btn-exit" disabled>退出屏保</button>
-          <button type="button" class="btn ghost" id="btn-unmount" disabled>卸载运行时</button>
-          <button type="button" class="btn ghost small" id="btn-reload-bundle" hidden>重新加载产物</button>
-        </div>
+      <div class="topbar-slim">
+        <div class="brand"><h1>SnoozePanel <span class="dot">实测台</span></h1></div>
+        <span class="badge" id="badge-runtime-slim">未挂载</span>
+        <span class="topbar-spacer"></span>
+        <button type="button" class="btn ghost small" id="btn-top-expand" title="展开顶栏">展开顶栏</button>
       </div>
     </header>
 
-    <!-- ============ 主内容区（中）：内嵌真实编辑器（左工具栏 / 中预览画布 / 右属性面板） ============ -->
-    <main class="main-content">
-      <div class="editor-host" id="editor-host"></div>
+    <!-- ============ 舞台（中）：预留背板 + 间隔，内嵌真实编辑器五区 ============ -->
+    <main class="stage">
+      <div class="stage-board" id="stage-board"></div>
     </main>
 
-    <!-- ============ 底栏（下）：运行日志 + mock 后端设备 ============ -->
-    <footer class="bottombar">
-      <div class="log-col">
-        <div class="card-head">
-          <h3 class="panel-title">运行日志</h3>
-          <button type="button" class="btn ghost small" id="btn-clear-log">清空</button>
+    <!-- ============ 底栏（下）：运行日志 + mock 后端设备（可拖高/收起） ============ -->
+    <footer class="bottombar" id="bottombar">
+      <div class="bottombar-resizer" id="bottombar-resizer" title="拖拽调整高度" aria-label="拖拽调整底栏高度" role="separator"></div>
+      <div class="bottom-full">
+        <div class="log-col">
+          <div class="card-head">
+            <h3 class="panel-title">运行日志</h3>
+            <div class="head-actions">
+              <button type="button" class="btn ghost small" id="btn-restore-bottom">恢复默认高度</button>
+              <button type="button" class="btn ghost small" id="btn-bottom-collapse" title="收起底栏">收起</button>
+              <button type="button" class="btn ghost small" id="btn-clear-log">清空</button>
+            </div>
+          </div>
+          <ul class="log" id="log"></ul>
         </div>
-        <ul class="log" id="log"></ul>
+        <div class="device-col">
+          <div class="card-head">
+            <h3 class="panel-title">mock 后端设备</h3>
+            <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
+          </div>
+          <ul class="device-list" id="device-list">
+            <li class="dim">尚未保存任何设备</li>
+          </ul>
+        </div>
       </div>
-      <div class="device-col">
-        <div class="card-head">
-          <h3 class="panel-title">mock 后端设备</h3>
-          <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
-        </div>
-        <ul class="device-list" id="device-list">
-          <li class="dim">尚未保存任何设备</li>
-        </ul>
+      <div class="bottom-slim">
+        <h3 class="panel-title">运行日志</h3>
+        <button type="button" class="btn ghost small" id="btn-bottom-expand" title="展开底栏">展开</button>
       </div>
     </footer>
   </div>

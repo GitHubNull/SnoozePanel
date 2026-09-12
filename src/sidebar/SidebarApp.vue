@@ -110,7 +110,7 @@ async function onSave(): Promise<void> {
 
 <style scoped>
 .sidebar-app {
-  max-width: 800px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px 20px 80px;
 }
@@ -135,8 +135,12 @@ async function onSave(): Promise<void> {
 .editor-wrap {
   background: var(--card-background-color, #fff);
   border-radius: 12px;
-  padding: 20px;
+  padding: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  /* 显式高度：插件五区外壳 height:100% 需要确定高度，否则会塔陷到 min-height */
+  height: min(760px, calc(100vh - 240px));
+  min-height: 520px;
+  overflow: hidden;
 }
 .save-bar {
   position: sticky;

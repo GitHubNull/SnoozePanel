@@ -35,12 +35,14 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   └── themes.ts       # midnight / paper 两套主题
 │   ├── editor/             # GUI 编辑器
 │   │   ├── editor.ts       # SnoozePanelEditorElement（HA card editor 协议）
-│   │   ├── EditorApp.vue   # PrimeVue 中文编辑器根
-│   │   └── forms/          # 分区表单
+│   │   ├── EditorApp.vue   # PrimeVue 中文编辑器根（五区：菜单栏 / 分类区 / 画布 / 属性区 / 状态栏）
+│   │   ├── useEditorLayout.ts # 编辑器 UI 偏好：面板宽度/收起 + 画布网格/磁吸（localStorage，仅 UI）
+│   │   ├── panels/         # 菜单栏全局配置浮层（Basic / Appearance / Conditions / Device / Advanced）
+│   │   └── forms/          # 复用分区表单（EntityConditionsForm）
 │   └── tests/              # Vitest 单测（*.spec.ts）
 ├── dev/                    # ★ 本地 mock 实测页（必须入库，供他人测试/核对/验证）
-│   ├── index.html          # 页面结构 + 内联样式（现代卡片式实测台，内置 mock hass，动态加载 tmp/dist 产物）
-│   └── dev.js              # 全部逻辑（// @ts-check + JSDoc，由 tsconfig.dev.json 做类型检查）
+│   ├── index.html          # 页面结构 + 内联样式（截图1结构：顶栏可收起 / 背板舞台内嵌插件 / 底栏可拖高可收起；内置 mock hass，动态加载 tmp/dist 产物）
+│   └── dev.js              # 全部逻辑（// @ts-check + JSDoc，由 tsconfig.dev.json 做类型检查；顶栏/底栏布局记忆 snoozepanel.dev.layout，仅 UI 偏好）
 ├── doc/                    # 文档（见下方文档体系）
 ├── img/                    # 截图（README 引用）
 ├── tmp/                    # 唯一临时目录：构建产物/验证截图/一次性脚本/垃圾数据/敏感文件（整体 .gitignore）

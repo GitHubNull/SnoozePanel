@@ -1,6 +1,22 @@
 <script setup lang="ts">
+/**
+ * SnoozePanel 插件配置界面（HA 插件自身的五区布局，决策见 doc/ARCHITECTURE.md）。
+ *
+ * 五个区域：
+ *   1. 插件菜单栏（顶，可收起）：品牌 + 全局配置菜单浮层 + 启用开关 / 保存到后端 / 收起
+ *   2. 组件分类选择区（左，可拖宽 / 收起 / 恢复默认宽度）
+ *   3. 屏保效果阅览与位置尺寸编辑区（中）：网格 + 磁吸附 + 拖拽等比缩放 + 点选联动
+ *   4. 组件属性编辑器（右，可拖宽 / 收起 / 恢复默认宽度）：选中组件的全部可配置属性
+ *   5. 插件状态栏（底）：设备 id / 选中与网格提示 / 保存状态
+ *
+ * 该组件被 HA 卡片编辑弹窗、HA 侧边栏与 dev 本地实测台三种宿主复用，
+ * 菜单栏与状态栏属于插件自身，宿主只负责给出可用尺寸。
+ * 面板尺寸 / 收起态 / 画布网格偏好存 localStorage（仅 UI 偏好）；
+ * 插件配置的持久化必须走 HA 后端（见 doc/TODO.md）。
+ */
 import { reactive, watch, computed, ref, nextTick, provide, onMounted, onBeforeUnmount } from 'vue';
 import type { SnoozeConfig, ComponentLayout } from '@/core/types';
+import { DEFAULT_LAYOUTS } from '@/core/types';
 import type { HassLike } from '@/core/hass';
 import { listFaceOptions } from '@/ui/faces/registry';
 import { saveDeviceConfig } from '@/core/store';
@@ -8,20 +24,22 @@ import { attachHexHash } from '@/core/config';
 import { resolveDeviceId } from '@/core/device';
 import FacePreview from '@/ui/components/FacePreview.vue';
 import FaceMarketplace from './FaceMarketplace.vue';
+import BasicPanel from './panels/BasicPanel.vue';
+import AppearancePanel from './panels/AppearancePanel.vue';
+import ConditionsPanel from './panels/ConditionsPanel.vue';
+import DevicePanel from './panels/DevicePanel.vue';
+import AdvancedPanel from './panels/AdvancedPanel.vue';
 import { Ticker } from '@/runtime/ticker';
+import { useEditorLayout, GRID_STEP_PRESETS, DEFAULT_EDITOR_LAYOUT, type PanelKey } from './useEditorLayout';
 import Toast from 'primevue/toast';
 import { useToast } from 'primevue/usetoast';
 import ToggleSwitch from 'primevue/toggleswitch';
 import InputNumber from 'primevue/inputnumber';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
-import Slider from 'primevue/slider';
-import Textarea from 'primevue/textarea';
-import Chip from 'primevue/chip';
 import Button from 'primevue/button';
 import ColorPicker from 'primevue/colorpicker';
-import EntityConditionsForm from './forms/EntityConditionsForm.vue';
-import TextsForm from './forms/TextsForm.vue';
+import Popover from 'primevue/popover';
 import ScreensaverApp from '@/ui/ScreensaverApp.vue';
 
 const props = defineProps<{
@@ -47,24 +65,9 @@ provide('snoozeState', previewState);
 const previewTicker = new Ticker((now) => {
   previewState.now = now;
 });
-onMounted(() => {
-  previewTicker.start();
-  previewTicker.watchVisibility();
-});
-onBeforeUnmount(() => {
-  previewTicker.destroy();
-});
 
-// HA 侧异步注入 hass：变化时同步给预览画布
-watch(
-  () => props.hass,
-  (next) => {
-    previewState.hass = next ?? ({ states: {} } as HassLike);
-  },
-);
-
-// 预览画布设备 id（仅用于展示，不影响逻辑）
-const previewDeviceId = resolveDeviceId();
+// 预览画布设备 id（展示用，不影响逻辑）
+const deviceId = resolveDeviceId();
 
 /**
  * 回声防护：HA 侧把 config-changed 的结果回填给 setConfig 时，
@@ -101,12 +104,15 @@ watch(
   { deep: true },
 );
 
-// ---- 选项 ----
-const THEMES = [
-  { label: '深夜（深色）', value: 'midnight' },
-  { label: '宣纸（浅色）', value: 'paper' },
-];
+// HA 侧异步注入 hass：变化时同步给预览画布
+watch(
+  () => props.hass,
+  (next) => {
+    previewState.hass = next ?? ({ states: {} } as HassLike);
+  },
+);
 
+// ---- 表盘选项 ----
 // 表盘选项：从注册表动态生成（label 中文名，value 表盘 id，kind 种类，source 来源）
 const CLOCK_STYLES = listFaceOptions().map((f) => ({
   label: f.label,
@@ -138,54 +144,7 @@ function onFaceSelected(faceId: string): void {
 // ---- 保存反馈 Toast ----
 const toast = useToast();
 
-const BG_TYPES = [
-  { label: '纯色', value: 'color' },
-  { label: '渐变', value: 'gradient' },
-  { label: '图片轮播', value: 'image' },
-];
-
-const DEVICE_MODES = [
-  { label: '白名单（仅列表内设备启用）', value: 'whitelist' },
-  { label: '黑名单（列表内设备禁用）', value: 'blacklist' },
-];
-
-const WEEKDAYS = [
-  { label: '一', value: 'mon' },
-  { label: '二', value: 'tue' },
-  { label: '三', value: 'wed' },
-  { label: '四', value: 'thu' },
-  { label: '五', value: 'fri' },
-  { label: '六', value: 'sat' },
-  { label: '日', value: 'sun' },
-];
-
-// 设备名单（逗号/空格分隔输入）
-const deviceListText = computed({
-  get: () => (draft.devices?.list ?? []).join(', '),
-  set: (v: string) => {
-    const list = v.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean);
-    draft.devices = draft.devices ?? { mode: 'whitelist', list: [] };
-    draft.devices.list = list;
-  },
-});
-
-const deviceModeEnabled = computed({
-  get: () => draft.devices !== null,
-  set: (on: boolean) => {
-    draft.devices = on ? { mode: 'whitelist', list: [] } : null;
-  },
-});
-
-// 图片列表文本（每行一个）
-const imagesText = computed({
-  get: () => draft.background.images.join('\n'),
-  set: (v: string) => {
-    draft.background.images = v.split('\n').map((s) => s.trim()).filter(Boolean);
-  },
-});
-
 // ---- 设备级覆盖（后端持久化） ----
-const deviceId = resolveDeviceId();
 const deviceSaving = ref(false);
 const deviceSaved = ref('');
 
@@ -235,97 +194,191 @@ async function onSaveDevice(): Promise<void> {
   }
 }
 
-// 时间段条件开关
-const timeEnabled = computed({
-  get: () => draft.conditions.time !== undefined,
-  set: (on: boolean) => {
-    draft.conditions.time = on ? { after: '21:00', before: '07:00' } : undefined;
-  },
-});
-
-const sunEnabled = computed({
-  get: () => draft.conditions.sun !== undefined,
-  set: (on: boolean) => {
-    draft.conditions.sun = on ? { after_sunset_offset: 0 } : undefined;
-  },
-});
-
-// 天气实体候选（从 hass 中筛 weather.*）
+// ---- 天气实体候选（从 hass 中筛 weather.*） ----
 const weatherEntities = computed(() => {
   if (!props.hass) return [];
   return Object.keys(props.hass.states).filter((id) => id.startsWith('weather.'));
 });
 
-// 星期多选
-const weekdaySelection = computed<string[]>({
-  get: () => (draft.conditions.time?.weekday ?? []) as string[],
-  set: (v: string[]) => {
-    if (draft.conditions.time) {
-      draft.conditions.time.weekday = v as never;
-    }
-  },
-});
+// ---- 插件菜单栏 ----
+type MenuKey = 'basic' | 'appearance' | 'conditions' | 'device' | 'advanced';
 
-function toggleWeekday(value: string): void {
-  if (!draft.conditions.time) return;
-  const list = [...((draft.conditions.time.weekday ?? []) as string[])];
-  const idx = list.indexOf(value);
-  if (idx >= 0) list.splice(idx, 1);
-  else list.push(value);
-  draft.conditions.time.weekday = list as never;
+const MENUS: { key: MenuKey; label: string }[] = [
+  { key: 'basic', label: '基础' },
+  { key: 'appearance', label: '外观' },
+  { key: 'conditions', label: '条件' },
+  { key: 'device', label: '设备' },
+  { key: 'advanced', label: '高级' },
+];
+
+/** 当前展开的菜单（null 表示全部收起） */
+const openMenu = ref<MenuKey | null>(null);
+/** 单一 Popover 实例：内容随 openMenu 切换，故只需一个锚定浮层 */
+const menuPopover = ref();
+const openMenuLabel = computed(() => MENUS.find((m) => m.key === openMenu.value)?.label ?? '');
+
+/** 打开 / 切换某组菜单浮层（重复点击同一项即关闭） */
+function toggleMenuPanel(key: MenuKey, ev: MouseEvent): void {
+  if (openMenu.value === key) {
+    menuPopover.value?.hide();
+    openMenu.value = null;
+    return;
+  }
+  openMenu.value = key;
+  // 等浮层内容切换完成后再定位，保证按新内容尺寸对齐按钮
+  void nextTick(() => menuPopover.value?.show(ev));
 }
 
-// 可空字符串字段的 v-model 适配（空串 → null）
-const screensaverEntityModel = computed<string>({
-  get: () => draft.screensaver_entity ?? '',
-  set: (v: string) => { draft.screensaver_entity = v.trim() || null; },
-});
+function onMenuHide(): void {
+  openMenu.value = null;
+}
 
-const displayTemplateModel = computed<string>({
-  get: () => draft.display_template ?? '',
-  set: (v: string) => { draft.display_template = v.trim() || null; },
-});
+// ---- 编辑器 UI 偏好（面板宽度 / 收起态 / 画布网格） ----
+const {
+  layout: uiLayout,
+  catsCollapsed,
+  propsCollapsed,
+  catsWidth,
+  propsWidth,
+  canvasGrid,
+  applyHostWidth,
+  clampToHost,
+  startResize,
+  togglePanel,
+  restorePanelWidth,
+  toggleMenu,
+  setGridStep,
+  resetGrid,
+} = useEditorLayout();
 
-const componentTemplatesModel = computed<string>({
-  get: () => (Object.keys(draft.component_templates).length ? JSON.stringify(draft.component_templates, null, 2) : ''),
-  set: (v: string) => {
-    try {
-      draft.component_templates = v.trim() ? (JSON.parse(v) as Record<string, string>) : {};
-    } catch {
-      // JSON 未输入完整时保留旧值，不打断输入
-    }
-  },
+const bodyEl = ref<HTMLElement | null>(null);
+let hostObserver: ResizeObserver | null = null;
+
+/** 宿主尺寸同步：窄宿主自动收起左右面板，并收敛宽度保证画布不被挤没 */
+function syncHostSize(): void {
+  const w = bodyEl.value?.getBoundingClientRect().width ?? 0;
+  applyHostWidth(w);
+  clampToHost(w);
+}
+
+/** 面板拖拽入口（在组件内解析宿主元素，避免模板里做空值断言） */
+function onResizeStart(which: PanelKey, ev: PointerEvent): void {
+  const host = bodyEl.value;
+  if (!host) return;
+  startResize(which, ev, host);
+}
+
+// ---- 画布工具条（网格 / 磁吸 / 网格尺寸） ----
+const GRID_PRESETS = GRID_STEP_PRESETS.map((v) => ({ label: `${v}%`, value: v }));
+
+/** 网格步长（写入前统一裁剪到 [1, 20]%） */
+const gridStep = computed<number>({
+  get: () => uiLayout.grid.step,
+  set: (v) => setGridStep(Number(v ?? DEFAULT_EDITOR_LAYOUT.grid.step)),
 });
 
 // ---- 设计器状态 ----
 const selectedComponent = ref<string>('clock');
 
-const componentList = computed(() => [
-  { key: 'clock', label: '时钟', show: draft.components.clock.show, toggleable: true },
-  { key: 'calendar', label: '日历', show: draft.components.calendar.show, toggleable: true },
-  { key: 'lunar', label: '农历', show: draft.components.lunar.show, toggleable: true },
-  { key: 'weather', label: '天气', show: draft.components.weather.show, toggleable: true },
-  { key: 'texts', label: '自定义文本', show: draft.components.texts.length > 0, toggleable: false },
-]);
+/** 组件分类清单（四类固定组件 + 每条自定义文本各成一项） */
+const componentList = computed(() => {
+  const list = [
+    { key: 'clock', label: '时钟', show: draft.components.clock.show, toggleable: true },
+    { key: 'calendar', label: '日历', show: draft.components.calendar.show, toggleable: true },
+    { key: 'lunar', label: '农历', show: draft.components.lunar.show, toggleable: true },
+    { key: 'weather', label: '天气', show: draft.components.weather.show, toggleable: true },
+  ];
+  // 每条自定义文本在列表中单独列出并各带显隐开关（复用 per-text 的 show 字段）；
+  // 标签取文本内容（空则「文本 N」），使「室温 …」这类项一眼可辨。
+  draft.components.texts.forEach((t, i) => {
+    list.push({
+      key: `text_${i}`,
+      label: t.content.trim() || `文本 ${i + 1}`,
+      show: t.show !== false,
+      toggleable: true,
+    });
+  });
+  return list;
+});
 
-/** 当前选中组件的中文名（右侧属性面板标题） */
+/** 当前选中组件的中文名（右侧属性面板标题 / 状态栏提示） */
 const selectedLabel = computed(
   () => componentList.value.find((c) => c.key === selectedComponent.value)?.label ?? '',
 );
 
-/** 组件显隐开关（texts 无独立开关，忽略） */
+/** 组件显隐开关（clock/calendar/lunar/weather，以及每条自定义文本 text_N） */
 function setComponentShow(key: string, value: boolean): void {
   switch (key) {
     case 'clock': draft.components.clock.show = value; break;
     case 'calendar': draft.components.calendar.show = value; break;
     case 'lunar': draft.components.lunar.show = value; break;
     case 'weather': draft.components.weather.show = value; break;
+    default:
+      // 单条自定义文本（text_0 / text_1 …）
+      if (key.startsWith('text_')) {
+        const idx = Number(key.slice(5));
+        if (draft.components.texts[idx]) draft.components.texts[idx].show = value;
+      }
   }
+}
+
+/** 新增一条自定义文本并立即选中（右侧随即出现该条文本的属性） */
+function addText(): void {
+  draft.components.texts.push({ content: '', layout: { ...DEFAULT_LAYOUTS.text }, show: true });
+  selectedComponent.value = `text_${draft.components.texts.length - 1}`;
+}
+
+/** 当前选中的单条自定义文本下标（未选中文本时返回 -1） */
+const selectedTextIndex = computed(() => {
+  if (!selectedComponent.value.startsWith('text_')) return -1;
+  const idx = Number(selectedComponent.value.slice(5));
+  return draft.components.texts[idx] ? idx : -1;
+});
+
+/** 当前选中单条文本的内容（供属性面板直接编辑；未选中文本时返回空串） */
+const selectedTextContent = computed<string>({
+  get: () => {
+    const i = selectedTextIndex.value;
+    return i >= 0 ? draft.components.texts[i].content : '';
+  },
+  set: (v: string) => {
+    const i = selectedTextIndex.value;
+    if (i >= 0) draft.components.texts[i].content = v;
+  },
+});
+
+/** 当前选中单条文本的显隐（供属性面板开关） */
+const selectedTextShow = computed<boolean>({
+  get: () => {
+    const i = selectedTextIndex.value;
+    return i >= 0 ? draft.components.texts[i].show !== false : true;
+  },
+  set: (v: boolean) => {
+    const i = selectedTextIndex.value;
+    if (i >= 0) draft.components.texts[i].show = v;
+  },
+});
+
+/** 删除当前选中的自定义文本（选中态回退到时钟） */
+function removeSelectedText(): void {
+  const idx = selectedTextIndex.value;
+  if (idx < 0) return;
+  draft.components.texts.splice(idx, 1);
+  selectedComponent.value = 'clock';
+}
+
+/** 画布点选组件 → 左侧分类与右侧属性同步切换 */
+function onCanvasSelect(compKey: string): void {
+  selectedComponent.value = compKey;
 }
 
 /** 当前选中组件的 layout */
 const currentLayout = computed<ComponentLayout>({
   get: () => {
+    if (selectedComponent.value.startsWith('text_')) {
+      const text = draft.components.texts[Number(selectedComponent.value.slice(5))];
+      if (text) return text.layout;
+    }
     switch (selectedComponent.value) {
       case 'clock': return draft.components.clock.layout;
       case 'calendar': return draft.components.calendar.layout;
@@ -335,6 +388,11 @@ const currentLayout = computed<ComponentLayout>({
     }
   },
   set: (v) => {
+    if (selectedComponent.value.startsWith('text_')) {
+      const text = draft.components.texts[Number(selectedComponent.value.slice(5))];
+      if (text) text.layout = v;
+      return;
+    }
     switch (selectedComponent.value) {
       case 'clock': draft.components.clock.layout = v; break;
       case 'calendar': draft.components.calendar.layout = v; break;
@@ -347,6 +405,9 @@ const currentLayout = computed<ComponentLayout>({
 /** 当前选中组件的 color */
 const currentColor = computed<string>({
   get: () => {
+    if (selectedComponent.value.startsWith('text_')) {
+      return draft.components.texts[Number(selectedComponent.value.slice(5))]?.color ?? '';
+    }
     switch (selectedComponent.value) {
       case 'clock': return draft.components.clock.color ?? '';
       case 'calendar': return draft.components.calendar.color ?? '';
@@ -357,6 +418,11 @@ const currentColor = computed<string>({
   },
   set: (v) => {
     const val = v || undefined;
+    if (selectedComponent.value.startsWith('text_')) {
+      const text = draft.components.texts[Number(selectedComponent.value.slice(5))];
+      if (text) text.color = val;
+      return;
+    }
     switch (selectedComponent.value) {
       case 'clock': draft.components.clock.color = val; break;
       case 'calendar': draft.components.calendar.color = val; break;
@@ -372,7 +438,6 @@ function setCurrentColor(v: string): void {
   currentColor.value = attachHexHash(String(v ?? ''));
 }
 
-// ---- 布局编辑辅助 ----
 /** 更新指定组件的 layout（数字输入直接绑定 draft，此处供预览画布拖拽回写） */
 function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
   if (compKey === 'clock') {
@@ -390,343 +455,434 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
     }
   }
 }
+
+// ---- 状态栏 ----
+/** 相对宿主传入配置是否有未提交的改动 */
+const dirty = computed(() => JSON.stringify(draft) !== JSON.stringify(props.config));
+
+/** 状态栏中段提示：选中对象 + 当前网格吸附档位 */
+const statusHint = computed(() => {
+  const grid = uiLayout.grid.snap
+    ? `网格吸附 ${uiLayout.grid.step}%`
+    : uiLayout.grid.show
+      ? `网格显示 ${uiLayout.grid.step}%（未吸附）`
+      : '网格已关闭';
+  return `选中：${selectedLabel.value} · ${grid}`;
+});
+
+/** 状态栏右侧：优先显示保存反馈，其次显示同步状态 */
+const saveState = computed(() => {
+  if (deviceSaved.value) return { text: deviceSaved.value, cls: 'ok' };
+  return dirty.value ? { text: '未保存更改', cls: 'warn' } : { text: '配置已同步', cls: 'ok' };
+});
+
+onMounted(() => {
+  previewTicker.start();
+  previewTicker.watchVisibility();
+  // 宿主尺寸自适应（首帧 + 后续变化）
+  void nextTick(syncHostSize);
+  if (typeof ResizeObserver !== 'undefined') {
+    hostObserver = new ResizeObserver(syncHostSize);
+    if (bodyEl.value) hostObserver.observe(bodyEl.value);
+  }
+  window.addEventListener('resize', syncHostSize);
+});
+
+onBeforeUnmount(() => {
+  previewTicker.destroy();
+  hostObserver?.disconnect();
+  hostObserver = null;
+  window.removeEventListener('resize', syncHostSize);
+});
 </script>
 
 <template>
-  <div class="design-shell">
+  <div class="plugin-shell" :class="{ 'menu-collapsed': uiLayout.menuCollapsed }">
     <!-- 保存等操作反馈的 Toast 容器（底部右侧，自动消失） -->
     <Toast position="bottom-right" />
 
-    <!-- ============ 左：功能工具栏（所有控制开关与配置） ============ -->
-    <aside class="shell-tools">
-      <div class="tools-scroll">
-        <!-- 总开关 -->
-        <div class="tool-master">
-          <span class="tool-master-label">启用屏保</span>
-          <ToggleSwitch v-model="draft.enabled" />
+    <!-- ============ 1. 插件菜单栏（顶，可收起） ============ -->
+    <header class="plugin-menu">
+      <template v-if="!uiLayout.menuCollapsed">
+        <div class="menu-brand">
+          <span class="menu-brand-name">SnoozePanel</span>
+          <span class="menu-brand-sub">屏保配置</span>
         </div>
+        <nav class="menu-nav">
+          <Button
+            v-for="m in MENUS"
+            :key="m.key"
+            :label="m.label"
+            size="small"
+            text
+            :class="{ active: openMenu === m.key }"
+            @click="toggleMenuPanel(m.key, $event)"
+          />
+        </nav>
+        <div class="menu-actions">
+          <label class="menu-switch">
+            <ToggleSwitch v-model="draft.enabled" />
+            <span>启用屏保</span>
+          </label>
+          <Button
+            :loading="deviceSaving"
+            label="保存到后端"
+            icon="pi pi-cloud-upload"
+            size="small"
+            @click="onSaveDevice"
+          />
+          <Button
+            icon="pi pi-angle-up"
+            size="small"
+            text
+            title="收起菜单栏"
+            aria-label="收起菜单栏"
+            @click="toggleMenu"
+          />
+        </div>
+      </template>
 
-        <!-- 基础 -->
-        <section class="tool-section">
-          <h4 class="tool-title">基础</h4>
-          <div class="field">
-            <label>闲置触发时长（秒）</label>
-            <InputNumber v-model="draft.idle_seconds" :min="5" :max="3600" show-buttons />
-            <small>无触摸/按键操作多少秒后进入屏保</small>
-          </div>
-          <div class="field">
-            <label>退出冷却（秒）</label>
-            <InputNumber v-model="draft.exit_cooldown_seconds" :min="0" :max="30" show-buttons />
-            <small>进入屏保后短暂忽略触摸，防误触退出</small>
-          </div>
-          <div class="field">
-            <label>主题</label>
-            <Select v-model="draft.theme" :options="THEMES" option-label="label" option-value="value" class="w-full" />
-          </div>
-          <div class="field">
-            <label>远程控制实体（input_boolean，可选）</label>
-            <InputText v-model="screensaverEntityModel" placeholder="input_boolean.screensaver" class="w-full" />
-            <small>置 on 强制进入屏保，触摸退出时自动复位为 off</small>
-          </div>
-        </section>
+      <!-- 收起态：细条（品牌 + 启用状态 + 展开按钮） -->
+      <template v-else>
+        <div class="menu-brand slim">
+          <span class="menu-brand-name">SnoozePanel</span>
+          <span class="menu-state">{{ draft.enabled ? '已启用' : '已停用' }}</span>
+        </div>
+        <Button
+          icon="pi pi-angle-down"
+          label="展开菜单栏"
+          size="small"
+          text
+          title="展开菜单栏"
+          @click="toggleMenu"
+        />
+      </template>
+    </header>
 
-        <!-- 表盘 -->
-        <section class="tool-section">
-          <h4 class="tool-title">表盘</h4>
-          <div class="face-selector-card" @click="openMarketplace">
-            <div class="face-selector-preview">
-              <FacePreview
-                :face-id="draft.components.clock.style"
-                :theme="draft.theme"
-                :seconds="draft.components.clock.seconds"
-                :hour24="draft.components.clock.hour24"
-                :zoom="1.2"
+    <!-- 全局配置菜单浮层（单一 Popover，内容随 openMenu 切换） -->
+    <Popover ref="menuPopover" @hide="onMenuHide">
+      <div class="menu-panel">
+        <div class="menu-panel-title">{{ openMenuLabel }}</div>
+        <BasicPanel
+          v-if="openMenu === 'basic'"
+          v-model:idle-seconds="draft.idle_seconds"
+          v-model:exit-cooldown="draft.exit_cooldown_seconds"
+          v-model:screensaver-entity="draft.screensaver_entity"
+        />
+        <AppearancePanel
+          v-else-if="openMenu === 'appearance'"
+          v-model:theme="draft.theme"
+          v-model:background="draft.background"
+        />
+        <ConditionsPanel
+          v-else-if="openMenu === 'conditions'"
+          v-model:conditions="draft.conditions"
+          :hass="hass"
+        />
+        <DevicePanel
+          v-else-if="openMenu === 'device'"
+          v-model:devices="draft.devices"
+          :device-id="deviceId"
+          :saving="deviceSaving"
+          :saved="deviceSaved"
+          @save="onSaveDevice"
+        />
+        <AdvancedPanel
+          v-else-if="openMenu === 'advanced'"
+          v-model:display-template="draft.display_template"
+          v-model:component-templates="draft.component_templates"
+        />
+      </div>
+    </Popover>
+
+    <!-- ============ 工作区：左分类 / 中画布 / 右属性 ============ -->
+    <div ref="bodyEl" class="plugin-body">
+      <!-- ---- 2. 组件分类选择区 ---- -->
+      <aside class="plugin-cats" :class="{ collapsed: catsCollapsed }" :style="{ width: catsWidth + 'px' }">
+        <template v-if="!catsCollapsed">
+          <div class="panel-head">
+            <span class="panel-title">组件分类</span>
+            <span class="panel-head-actions">
+              <Button
+                icon="pi pi-undo"
+                size="small"
+                text
+                rounded
+                title="恢复默认宽度"
+                aria-label="恢复分类区默认宽度"
+                @click="restorePanelWidth('cats')"
               />
-            </div>
-            <div class="face-selector-info">
-              <span class="face-selector-name">{{ faceLabel(draft.components.clock.style) }}</span>
-              <span class="face-selector-action">点击进入表盘市场</span>
-            </div>
-          </div>
-          <div class="inline-row">
-            <label>24 小时制</label>
-            <ToggleSwitch v-model="draft.components.clock.hour24" />
-          </div>
-          <div class="inline-row">
-            <label>显示秒</label>
-            <ToggleSwitch v-model="draft.components.clock.seconds" />
-          </div>
-        </section>
-
-        <!-- 背景 -->
-        <section class="tool-section">
-          <h4 class="tool-title">背景</h4>
-          <div class="field">
-            <label>背景类型</label>
-            <Select v-model="draft.background.type" :options="BG_TYPES" option-label="label" option-value="value" class="w-full" />
-          </div>
-          <div v-if="draft.background.type === 'color'" class="field">
-            <label>颜色</label>
-            <InputText v-model="draft.background.color" class="w-full" placeholder="#0b1020" />
-          </div>
-          <template v-if="draft.background.type === 'gradient'">
-            <div class="field"><label>起始色</label><InputText v-model="draft.background.gradient.from" class="w-full" /></div>
-            <div class="field"><label>结束色</label><InputText v-model="draft.background.gradient.to" class="w-full" /></div>
-            <div class="field">
-              <label>角度（{{ draft.background.gradient.angle }}°）</label>
-              <Slider v-model="draft.background.gradient.angle" :min="0" :max="360" />
-            </div>
-          </template>
-          <template v-if="draft.background.type === 'image'">
-            <div class="field">
-              <label>图片地址（每行一张，多张轮播）</label>
-              <Textarea v-model="imagesText" rows="4" class="w-full" placeholder="/local/bg1.jpg&#10;/local/bg2.jpg" />
-            </div>
-            <div class="field">
-              <label>轮播间隔（秒）</label>
-              <InputNumber v-model="draft.background.interval_seconds" :min="3" :max="600" show-buttons />
-            </div>
-          </template>
-          <div class="field">
-            <label>暗化遮罩（{{ Math.round(draft.background.dim * 100) }}%）</label>
-            <Slider v-model="draft.background.dim" :min="0" :max="1" :step="0.05" />
-          </div>
-        </section>
-
-        <!-- 组件显隐 -->
-        <section class="tool-section">
-          <h4 class="tool-title">组件显隐</h4>
-          <p class="tool-hint">点击选中组件，在右侧编辑其位置 / 尺寸 / 颜色</p>
-          <div class="component-list">
-            <div
-              v-for="comp in componentList"
-              :key="comp.key"
-              class="component-item"
-              :class="{ active: selectedComponent === comp.key }"
-              @click="selectedComponent = comp.key"
-            >
-              <ToggleSwitch
-                v-if="comp.toggleable"
-                :model-value="comp.show"
-                @update:model-value="setComponentShow(comp.key, $event)"
-                @click.stop
+              <Button
+                icon="pi pi-angle-double-left"
+                size="small"
+                text
+                rounded
+                title="收起"
+                aria-label="收起组件分类区"
+                @click="togglePanel('cats')"
               />
-              <span class="component-name">{{ comp.label }}</span>
-            </div>
+            </span>
           </div>
-        </section>
-
-        <!-- 生效条件 -->
-        <section class="tool-section">
-          <h4 class="tool-title">生效条件</h4>
-          <p class="tool-hint">以下条件为「与」关系，全部满足才会进入屏保；屏保中条件失效会立即退出。</p>
-          <EntityConditionsForm v-model="draft.conditions.entity" :hass="hass" />
-          <div class="inline-row">
-            <label>时间段限制</label>
-            <ToggleSwitch v-model="timeEnabled" />
-          </div>
-          <template v-if="draft.conditions.time">
-            <div class="field-row">
-              <div class="field">
-                <label>晚于（HH:mm）</label>
-                <InputText v-model="draft.conditions.time.after" placeholder="21:00" class="w-full" />
-              </div>
-              <div class="field">
-                <label>早于（HH:mm）</label>
-                <InputText v-model="draft.conditions.time.before" placeholder="07:00" class="w-full" />
-              </div>
-            </div>
-            <div class="field">
-              <label>限定星期（不选=每天）</label>
-              <div class="weekday-chips">
-                <Chip
-                  v-for="w in WEEKDAYS"
-                  :key="w.value"
-                  :label="w.label"
-                  :class="{ active: weekdaySelection.includes(w.value) }"
-                  @click="toggleWeekday(w.value)"
+          <div class="panel-scroll">
+            <div class="component-list">
+              <div
+                v-for="comp in componentList"
+                :key="comp.key"
+                class="component-item"
+                :class="{ active: selectedComponent === comp.key }"
+                @click="selectedComponent = comp.key"
+              >
+                <ToggleSwitch
+                  :model-value="comp.show"
+                  @update:model-value="setComponentShow(comp.key, $event)"
+                  @click.stop
                 />
+                <span class="component-name">{{ comp.label }}</span>
               </div>
             </div>
-          </template>
-          <div class="inline-row">
-            <label>日出日落限制</label>
-            <ToggleSwitch v-model="sunEnabled" />
-          </div>
-          <template v-if="draft.conditions.sun">
-            <div class="field">
-              <label>日落后偏移（分钟，可负）</label>
-              <InputNumber v-model="draft.conditions.sun.after_sunset_offset" :min="-180" :max="720" show-buttons />
-            </div>
-            <div class="field">
-              <label>日出前偏移（分钟）</label>
-              <InputNumber v-model="draft.conditions.sun.before_sunrise_offset" :min="-180" :max="720" show-buttons />
-            </div>
-          </template>
-        </section>
-
-        <!-- 设备范围 -->
-        <section class="tool-section">
-          <h4 class="tool-title">设备范围</h4>
-          <div class="inline-row">
-            <label>按设备限制</label>
-            <ToggleSwitch v-model="deviceModeEnabled" />
-          </div>
-          <template v-if="draft.devices">
-            <div class="field">
-              <label>名单模式</label>
-              <Select v-model="draft.devices.mode" :options="DEVICE_MODES" option-label="label" option-value="value" class="w-full" />
-            </div>
-            <div class="field">
-              <label>设备 id 列表（逗号分隔）</label>
-              <Textarea v-model="deviceListText" rows="3" class="w-full" placeholder="dev-abc123, pad-kitchen" />
-            </div>
-          </template>
-        </section>
-
-        <!-- 高级 -->
-        <section class="tool-section">
-          <h4 class="tool-title">高级</h4>
-          <div class="field">
-            <label>整体显隐表达式（display_template）</label>
-            <Textarea v-model="displayTemplateModel" rows="3" class="w-full code"
-              placeholder="states['binary_sensor.someone_home'].state === 'on'" />
-            <small>JS 表达式，可用变量：hass、states、user。出错时默认显示。</small>
-          </div>
-          <div class="field">
-            <label>单组件显隐表达式（JSON，可选）</label>
-            <Textarea v-model="componentTemplatesModel" rows="4" class="w-full code"
-              placeholder='{"clock": "user.is_admin", "weather": "true"}' />
-          </div>
-        </section>
-
-        <!-- 设备级覆盖 -->
-        <section class="tool-section">
-          <h4 class="tool-title">设备级覆盖</h4>
-          <div class="field">
-            <label>当前设备 id</label>
-            <div class="device-id-text">{{ deviceId }}</div>
-            <small>把当前配置存为该设备的独立覆盖，落盘到 HA 后端（断电/重启/清缓存不丢）</small>
-          </div>
-          <div class="field">
-            <Button :loading="deviceSaving" label="保存为本设备配置" @click="onSaveDevice" />
-            <span v-if="deviceSaved" class="save-hint">{{ deviceSaved }}</span>
-          </div>
-        </section>
-      </div>
-    </aside>
-
-    <!-- ============ 中：预览画布（纯实时预览，可拖拽/缩放） ============ -->
-    <main class="shell-canvas">
-      <ScreensaverApp
-        :config="draft"
-        :device-id="previewDeviceId"
-        edit-mode
-        @update:layout="updateComponentLayout"
-      />
-    </main>
-
-    <!-- ============ 右：属性面板（选中组件详细属性） ============ -->
-    <aside class="shell-props">
-      <div class="props-head">
-        <span class="props-title">属性设置</span>
-        <span class="props-subject">{{ selectedLabel }}</span>
-      </div>
-      <div class="props-scroll">
-        <!-- 时钟属性 -->
-        <template v-if="selectedComponent === 'clock'">
-          <div class="inline-row"><label>24 小时制</label><ToggleSwitch v-model="draft.components.clock.hour24" /></div>
-          <div class="inline-row"><label>显示秒</label><ToggleSwitch v-model="draft.components.clock.seconds" /></div>
-        </template>
-
-        <!-- 日历属性 -->
-        <template v-if="selectedComponent === 'calendar'">
-          <div class="field">
-            <label>周起始日</label>
-            <Select v-model="draft.components.calendar.week_start"
-              :options="[{ label: '周一', value: 1 }, { label: '周日', value: 0 }]"
-              option-label="label" option-value="value" class="w-full" />
-          </div>
-          <div class="field">
-            <label>日期格式模板</label>
-            <InputText v-model="draft.components.calendar.format" class="w-full" placeholder="M月D日 dddd" />
-            <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
-          </div>
-          <div class="inline-row"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
-        </template>
-
-        <!-- 农历属性 -->
-        <template v-if="selectedComponent === 'lunar'">
-          <div class="field">
-            <label>格式模板</label>
-            <InputText v-model="draft.components.lunar.format" class="w-full" placeholder="{lunar_month}{lunar_day}" />
-            <small>占位符：{'{lunar_month}'} 月 / {'{lunar_day}'} 日 / {'{ganzhi}'} 干支 / {'{zodiac}'} 生肖</small>
-          </div>
-        </template>
-
-        <!-- 天气属性 -->
-        <template v-if="selectedComponent === 'weather'">
-          <div class="field">
-            <label>天气实体</label>
-            <Select v-model="draft.components.weather.entity" :options="weatherEntities" editable class="w-full" placeholder="weather.home" />
-          </div>
-        </template>
-
-        <!-- 文本属性 -->
-        <template v-if="selectedComponent === 'texts'">
-          <TextsForm v-model="draft.components.texts" />
-        </template>
-
-        <!-- 通用：布局编辑 -->
-        <div v-if="selectedComponent !== 'texts'" class="layout-section">
-          <label class="layout-label">布局</label>
-          <div class="layout-inputs">
-            <div class="layout-input">
-              <span>X</span>
-              <InputNumber v-model="currentLayout.x" :min="0" :max="100" suffix="%" />
-            </div>
-            <div class="layout-input">
-              <span>Y</span>
-              <InputNumber v-model="currentLayout.y" :min="0" :max="100" suffix="%" />
-            </div>
-            <div class="layout-input">
-              <span>宽</span>
-              <InputNumber v-model="currentLayout.w" :min="5" :max="100" suffix="%" />
-            </div>
-            <div class="layout-input">
-              <span>高</span>
-              <InputNumber v-model="currentLayout.h" :min="0" :max="100" suffix="%" placeholder="自适应" />
-            </div>
-          </div>
-          <small class="layout-hint">拖拽预览画布中组件右下角的圆形手柄，或调整「宽」，即可等比缩放组件</small>
-        </div>
-
-        <!-- 通用：字体颜色 -->
-        <div v-if="selectedComponent !== 'texts'" class="field">
-          <label>字体颜色（可选）</label>
-          <div class="color-row">
-            <ColorPicker
-              :model-value="currentColor"
-              format="hex"
-              @update:model-value="setCurrentColor(String($event ?? ''))"
-            />
-            <InputText
-              :model-value="currentColor"
-              placeholder="留空用主题色"
-              class="color-input"
-              @update:model-value="setCurrentColor(String($event ?? ''))"
-            />
             <Button
-              v-if="currentColor"
-              label="清除"
+              class="add-text"
+              label="添加自定义文本"
+              icon="pi pi-plus"
               size="small"
               text
-              @click="setCurrentColor('')"
+              @click="addText"
             />
           </div>
+          <!-- 右边缘拖拽条：调整分类区宽度 -->
+          <span
+            class="resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="拖拽调整组件分类区宽度"
+            @pointerdown="onResizeStart('cats', $event)"
+          ></span>
+        </template>
+
+        <!-- 收起态：竖向滑轨 -->
+        <button v-else type="button" class="rail" title="展开组件分类区" aria-label="展开组件分类区" @click="togglePanel('cats')">
+          <span class="rail-label">组件分类</span>
+        </button>
+      </aside>
+
+      <!-- ---- 3. 屏保效果阅览与位置尺寸编辑区 ---- -->
+      <main class="plugin-canvas">
+        <div class="canvas-bar">
+          <label class="canvas-toggle">
+            <ToggleSwitch v-model="uiLayout.grid.show" />
+            <span>网格</span>
+          </label>
+          <label class="canvas-toggle">
+            <ToggleSwitch v-model="uiLayout.grid.snap" />
+            <span>磁吸</span>
+          </label>
+          <span class="canvas-sep"></span>
+          <span class="canvas-label">网格尺寸</span>
+          <Select
+            v-model="gridStep"
+            :options="GRID_PRESETS"
+            option-label="label"
+            option-value="value"
+            size="small"
+            class="grid-preset"
+            aria-label="网格尺寸预设"
+          />
+          <InputNumber
+            v-model="gridStep"
+            :min="1"
+            :max="20"
+            :step="0.5"
+            :show-buttons="true"
+            suffix="%"
+            size="small"
+            class="grid-number"
+            aria-label="网格尺寸百分比"
+          />
+          <Button label="恢复默认" size="small" text @click="resetGrid" />
         </div>
-      </div>
-    </aside>
+
+        <ScreensaverApp
+          :config="draft"
+          :device-id="deviceId"
+          :grid="canvasGrid"
+          :selected="selectedComponent"
+          edit-mode
+          @update:layout="updateComponentLayout"
+          @select="onCanvasSelect"
+        />
+      </main>
+
+      <!-- ---- 4. 组件属性编辑器 ---- -->
+      <aside class="plugin-props" :class="{ collapsed: propsCollapsed }" :style="{ width: propsWidth + 'px' }">
+        <template v-if="!propsCollapsed">
+          <span
+            class="resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="拖拽调整组件属性区宽度"
+            @pointerdown="onResizeStart('props', $event)"
+          ></span>
+          <div class="panel-head">
+            <span class="panel-title">组件属性</span>
+            <span class="panel-head-actions">
+              <Button
+                icon="pi pi-undo"
+                size="small"
+                text
+                rounded
+                title="恢复默认宽度"
+                aria-label="恢复属性区默认宽度"
+                @click="restorePanelWidth('props')"
+              />
+              <Button
+                icon="pi pi-angle-double-right"
+                size="small"
+                text
+                rounded
+                title="收起"
+                aria-label="收起组件属性区"
+                @click="togglePanel('props')"
+              />
+            </span>
+          </div>
+          <div class="panel-scroll">
+            <div class="props-subject">{{ selectedLabel }}</div>
+
+            <!-- 时钟属性：表盘卡片 + 时间显示 -->
+            <template v-if="selectedComponent === 'clock'">
+              <div class="face-selector-card" @click="openMarketplace">
+                <div class="face-selector-preview">
+                  <FacePreview
+                    :face-id="draft.components.clock.style"
+                    :theme="draft.theme"
+                    :seconds="draft.components.clock.seconds"
+                    :hour24="draft.components.clock.hour24"
+                    :zoom="1.2"
+                  />
+                </div>
+                <div class="face-selector-info">
+                  <span class="face-selector-name">{{ faceLabel(draft.components.clock.style) }}</span>
+                  <span class="face-selector-action">点击进入表盘市场</span>
+                </div>
+              </div>
+              <div class="inline-row"><label>24 小时制</label><ToggleSwitch v-model="draft.components.clock.hour24" /></div>
+              <div class="inline-row"><label>显示秒</label><ToggleSwitch v-model="draft.components.clock.seconds" /></div>
+            </template>
+
+            <!-- 日历属性 -->
+            <template v-if="selectedComponent === 'calendar'">
+              <div class="field">
+                <label>周起始日</label>
+                <Select
+                  v-model="draft.components.calendar.week_start"
+                  :options="[{ label: '周一', value: 1 }, { label: '周日', value: 0 }]"
+                  option-label="label"
+                  option-value="value"
+                  class="w-full"
+                />
+              </div>
+              <div class="field">
+                <label>日期格式模板</label>
+                <InputText v-model="draft.components.calendar.format" class="w-full" placeholder="M月D日 dddd" />
+                <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
+              </div>
+              <div class="inline-row"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
+            </template>
+
+            <!-- 农历属性 -->
+            <template v-if="selectedComponent === 'lunar'">
+              <div class="field">
+                <label>格式模板</label>
+                <InputText v-model="draft.components.lunar.format" class="w-full" placeholder="{lunar_month}{lunar_day}" />
+                <small>占位符：{'{lunar_month}'} 月 / {'{lunar_day}'} 日 / {'{ganzhi}'} 干支 / {'{zodiac}'} 生肖</small>
+              </div>
+            </template>
+
+            <!-- 天气属性 -->
+            <template v-if="selectedComponent === 'weather'">
+              <div class="field">
+                <label>天气实体</label>
+                <Select
+                  v-model="draft.components.weather.entity"
+                  :options="weatherEntities"
+                  editable
+                  class="w-full"
+                  placeholder="weather.home"
+                />
+              </div>
+            </template>
+
+            <!-- 单条自定义文本属性（在组件分类中选中某条文本时） -->
+            <template v-if="selectedTextIndex >= 0">
+              <div class="field">
+                <label>文本内容</label>
+                <InputText v-model="selectedTextContent" class="w-full" placeholder="文本内容，可含 {entity_id} 占位符" />
+                <small>支持实体占位符，如 室温 {'{sensor.temp}'}°C</small>
+              </div>
+              <div class="inline-row"><label>显示该条文本</label><ToggleSwitch v-model="selectedTextShow" /></div>
+              <div class="field">
+                <Button label="删除此文本" icon="pi pi-trash" severity="danger" size="small" text @click="removeSelectedText" />
+              </div>
+            </template>
+
+            <!-- 通用：布局编辑（X/Y/宽/高） -->
+            <div class="layout-section">
+              <label class="layout-label">布局</label>
+              <div class="layout-inputs">
+                <div class="layout-input">
+                  <span>X</span>
+                  <InputNumber v-model="currentLayout.x" :min="0" :max="100" suffix="%" />
+                </div>
+                <div class="layout-input">
+                  <span>Y</span>
+                  <InputNumber v-model="currentLayout.y" :min="0" :max="100" suffix="%" />
+                </div>
+                <div class="layout-input">
+                  <span>宽</span>
+                  <InputNumber v-model="currentLayout.w" :min="5" :max="100" suffix="%" />
+                </div>
+                <div class="layout-input">
+                  <span>高</span>
+                  <InputNumber v-model="currentLayout.h" :min="0" :max="100" suffix="%" placeholder="自适应" />
+                </div>
+              </div>
+              <small class="layout-hint">拖拽画布中组件可移动位置，拖拽右下角圆形手柄可等比缩放；开启磁吸时会自动对齐网格。</small>
+            </div>
+
+            <!-- 通用：字体颜色 -->
+            <div class="field">
+              <label>字体颜色（可选）</label>
+              <div class="color-row">
+                <ColorPicker
+                  :model-value="currentColor"
+                  format="hex"
+                  @update:model-value="setCurrentColor(String($event ?? ''))"
+                />
+                <InputText
+                  :model-value="currentColor"
+                  placeholder="留空用主题色"
+                  class="color-input"
+                  @update:model-value="setCurrentColor(String($event ?? ''))"
+                />
+                <Button v-if="currentColor" label="清除" size="small" text @click="setCurrentColor('')" />
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 收起态：竖向滑轨 -->
+        <button v-else type="button" class="rail" title="展开组件属性区" aria-label="展开组件属性区" @click="togglePanel('props')">
+          <span class="rail-label">组件属性</span>
+        </button>
+      </aside>
+    </div>
+
+    <!-- ============ 5. 插件状态栏（底） ============ -->
+    <footer class="plugin-status">
+      <span class="status-item">设备 {{ deviceId }}</span>
+      <span class="status-item status-hint">{{ statusHint }}</span>
+      <span class="status-item" :class="saveState.cls">{{ saveState.text }}</span>
+    </footer>
 
     <!-- 表盘市场模态（弹窗覆盖层） -->
     <FaceMarketplace
@@ -742,150 +898,158 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
 </template>
 
 <style scoped>
-/* ============ 三区外壳：左工具栏 / 中预览 / 右属性 ============ */
-.design-shell {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 360px;
-  grid-template-rows: minmax(0, 1fr);
-  width: 100%;
-  height: 100%;
-  min-height: 560px;
-  overflow: hidden;
+/* 拖拽面板宽度时全局光标（与 useEditorLayout 的 sp-editor-resizing 类对应） */
+:global(html.sp-editor-resizing) {
+  cursor: col-resize !important;
+  user-select: none;
 }
-.shell-tools {
+:global(html.sp-editor-resizing) * {
+  cursor: col-resize !important;
+}
+
+/* ============ 插件外壳：菜单栏 / 工作区 / 状态栏 纵向三行 ============ */
+.plugin-shell {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  border-right: 1px solid var(--divider-color, #e0e0e0);
+  width: 100%;
+  height: 100%;
+  /* HA 卡片编辑弹窗为自动高度宿主：留 min-height 避免高度塌陷 */
+  min-height: 460px;
+  overflow: hidden;
+  background: var(--card-background-color, #fff);
+  color: var(--primary-text-color, #1c1c1c);
 }
-.tools-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-.tool-master {
+
+/* ============ 1. 插件菜单栏（顶） ============ */
+.plugin-menu {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 16px;
+  flex: none;
+  height: 52px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--divider-color, #e0e0e0);
+  background: var(--card-background-color, #fff);
 }
-.tool-master-label {
+.plugin-shell.menu-collapsed .plugin-menu {
+  height: 40px;
+}
+.menu-brand {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  flex: none;
+}
+.menu-brand-name {
   font-weight: 700;
   font-size: 14px;
 }
-.tool-section {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--divider-color, #e0e0e0);
+.menu-brand-sub {
+  font-size: 11px;
+  color: var(--secondary-text-color, #888);
 }
-.tool-title {
-  margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--primary-color, #5ea0ff);
+.menu-brand.slim {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
 }
-.tool-hint {
-  margin: 0 0 10px;
+.menu-state {
   font-size: 12px;
   color: var(--secondary-text-color, #888);
 }
-.shell-canvas {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  background: #000;
-}
-.shell-props {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-left: 1px solid var(--divider-color, #e0e0e0);
-}
-.props-head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--divider-color, #e0e0e0);
-}
-.props-title {
-  font-weight: 700;
-  font-size: 13px;
-}
-.props-subject {
-  font-size: 12px;
-  color: var(--primary-color, #5ea0ff);
-}
-.props-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 14px 16px;
-}
-
-/* ============ 表单通用 ============ */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-.field > label {
-  font-weight: 600;
-  font-size: 13px;
-}
-.field small {
-  color: var(--secondary-text-color, #888);
-  font-size: 12px;
-}
-.field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.inline-row {
+.menu-nav {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
 }
-.inline-row label {
-  font-size: 13px;
-}
-.w-full { width: 100%; }
-.code { font-family: monospace; font-size: 12.5px; }
-.weekday-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.weekday-chips :deep(.p-chip) {
-  cursor: pointer;
-  opacity: 0.45;
-}
-.weekday-chips :deep(.p-chip.active) {
-  opacity: 1;
+.menu-nav :deep(.p-button.active) {
   background: var(--primary-color, #5ea0ff);
   color: #fff;
 }
-.device-id-text {
-  font-family: monospace;
-  font-size: 13px;
-  padding: 6px 10px;
-  background: var(--card-background-color, #f5f5f5);
-  border-radius: 6px;
-  user-select: text;
+.menu-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  margin-left: auto;
 }
-.save-hint {
-  margin-left: 2px;
+.menu-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
+  white-space: nowrap;
+}
+
+/* 全局配置菜单浮层 */
+.menu-panel {
+  width: 320px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+.menu-panel-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 12px;
   color: var(--primary-color, #5ea0ff);
 }
 
-/* ============ 组件列表 ============ */
+/* ============ 工作区：左分类 / 中画布 / 右属性 ============ */
+.plugin-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---- 2. 组件分类选择区（左） ---- */
+.plugin-cats {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 0;
+  position: relative;
+  border-right: 1px solid var(--divider-color, #e0e0e0);
+  background: var(--card-background-color, #fff);
+  transition: width 0.12s ease;
+}
+.plugin-cats.collapsed {
+  width: 36px;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--divider-color, #e0e0e0);
+}
+.panel-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+.add-text {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+/* 组件列表 */
 .component-list {
   display: flex;
   flex-direction: column;
@@ -907,15 +1071,189 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
   background: var(--primary-color, #5ea0ff);
   color: #fff;
 }
-.component-item.active .p-toggleswitch {
+.component-item.active :deep(.p-toggleswitch) {
   filter: brightness(10);
 }
 .component-name {
   font-size: 14px;
   font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* ============ 表盘选择器卡片 ============ */
+/* ---- 3. 屏保效果阅览与位置尺寸编辑区（中） ---- */
+.plugin-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+.canvas-bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(20, 24, 34, 0.82);
+  color: #e6ebf5;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+.canvas-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.canvas-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.canvas-label {
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.grid-preset {
+  width: 84px;
+}
+.grid-number {
+  width: 116px;
+}
+
+/* ---- 4. 组件属性编辑器（右） ---- */
+.plugin-props {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 0;
+  position: relative;
+  border-left: 1px solid var(--divider-color, #e0e0e0);
+  background: var(--card-background-color, #fff);
+  transition: width 0.12s ease;
+}
+.plugin-props.collapsed {
+  width: 36px;
+}
+.props-subject {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-color, #5ea0ff);
+  margin-bottom: 12px;
+}
+
+/* 面板边缘拖拽条（宽 6px，悬停高亮） */
+.resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 8;
+  touch-action: none;
+}
+.plugin-cats .resizer {
+  right: -3px;
+}
+.plugin-props .resizer {
+  left: -3px;
+}
+.resizer:hover,
+:global(html.sp-editor-resizing) .resizer {
+  background: var(--primary-color, #5ea0ff);
+}
+
+/* 收起态滑轨 */
+.rail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--secondary-text-color, #888);
+}
+.rail:hover {
+  color: var(--primary-color, #5ea0ff);
+}
+.rail-label {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.15em;
+  font-size: 12px;
+}
+
+/* ============ 5. 插件状态栏（底） ============ */
+.plugin-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border-top: 1px solid var(--divider-color, #e0e0e0);
+  background: var(--card-background-color, #fff);
+  font-size: 12px;
+  color: var(--secondary-text-color, #888);
+}
+.status-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+.status-item.ok {
+  color: var(--primary-color, #5ea0ff);
+}
+.status-item.warn {
+  color: #e0a23c;
+}
+
+/* ============ 表单通用（右属性面板内复用） ============ */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.field > label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.field small {
+  color: var(--secondary-text-color, #888);
+  font-size: 12px;
+}
+.inline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.inline-row label {
+  font-size: 13px;
+}
+.w-full {
+  width: 100%;
+}
+
+/* 表盘选择器卡片 */
 .face-selector-card {
   display: flex;
   align-items: center;
@@ -956,7 +1294,7 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
   color: var(--primary-color, #5ea0ff);
 }
 
-/* ============ 布局编辑 ============ */
+/* 布局编辑 */
 .layout-section {
   margin-bottom: 16px;
 }
@@ -998,7 +1336,7 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
   font-size: 13px;
 }
 
-/* ============ 颜色选择 ============ */
+/* 颜色选择 */
 .color-row {
   display: flex;
   align-items: center;

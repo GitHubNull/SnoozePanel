@@ -9,7 +9,8 @@
  *     （mock input_boolean 置位 + 重新赋值 el.hass → controller.syncFromEntity）；
  *   - 配置以编辑器为单一来源：挂载时读取编辑器当前配置；编辑器的变更（config-changed）
  *     实时回填给运行中的面板元素（与 HA 收到 config-changed 后回填 setConfig 一致）；
- *   - 页面布局：顶栏（运行时操作）/ 主内容区（内嵌编辑器：左工具栏·中预览·右属性）/ 底栏（日志·设备）；
+ *   - 页面布局：顶栏（运行时操作，可收起）/ 舞台（背板内嵌编辑器：菜单栏·分类区·预览画布·属性区·状态栏）/ 底栏（日志·设备，可拖高/收起）；
+ *   - 页面 UI 偏好（顶栏收起、底栏高度/收起）存 localStorage（仅 UI 偏好，不涉及插件配置）；
  *   - 所有操作走 Toast + 分级日志，全局异常（error / unhandledrejection）也纳入日志，
  *     保证「控制台零报错」可自证；
  *   - 本文件由 tsconfig.dev.json（allowJs + checkJs）做类型检查，JSDoc 与 src 侧类型对齐。
@@ -106,6 +107,11 @@ const DEFAULT_IDLE_SECONDS = 15;
 const BUNDLE_URL = '../tmp/dist/snoozepanel.js';
 /** 日志条目上限（超出丢弃最旧条目，防止 DOM 无限膨胀） */
 const LOG_LIMIT = 300;
+/** 实测台 UI 布局偏好 key（仅 UI 偏好，不涉及插件配置） */
+const DEV_LAYOUT_KEY = 'snoozepanel.dev.layout';
+/** 底栏高度约束（px） */
+const BOTTOM_MIN = 120;
+const BOTTOM_DEFAULT = 200;
 
 /* ============================ 元素引用 ============================ */
 
@@ -122,6 +128,9 @@ function $id(id) {
 
 /** 页面元素引用（模块加载时解析一次） */
 const el = {
+  topbar: $id('topbar'),
+  bottombar: $id('bottombar'),
+  bottombarResizer: $id('bottombar-resizer'),
   btnMount: /** @type {HTMLButtonElement} */ ($id('btn-mount')),
   btnReapply: /** @type {HTMLButtonElement} */ ($id('btn-reapply')),
   btnTrigger: /** @type {HTMLButtonElement} */ ($id('btn-trigger')),
@@ -130,8 +139,14 @@ const el = {
   badgeBundle: $id('badge-bundle'),
   badgeDirty: $id('badge-dirty'),
   badgeRuntime: $id('badge-runtime'),
+  badgeRuntimeSlim: $id('badge-runtime-slim'),
   btnReloadBundle: /** @type {HTMLButtonElement} */ ($id('btn-reload-bundle')),
-  editorHost: $id('editor-host'),
+  stageBoard: $id('stage-board'),
+  btnTopCollapse: /** @type {HTMLButtonElement} */ ($id('btn-top-collapse')),
+  btnTopExpand: /** @type {HTMLButtonElement} */ ($id('btn-top-expand')),
+  btnBottomCollapse: /** @type {HTMLButtonElement} */ ($id('btn-bottom-collapse')),
+  btnBottomExpand: /** @type {HTMLButtonElement} */ ($id('btn-bottom-expand')),
+  btnRestoreBottom: /** @type {HTMLButtonElement} */ ($id('btn-restore-bottom')),
   btnRefreshDevices: /** @type {HTMLButtonElement} */ ($id('btn-refresh-devices')),
   deviceList: /** @type {HTMLUListElement} */ ($id('device-list')),
   btnClearLog: /** @type {HTMLButtonElement} */ ($id('btn-clear-log')),
@@ -567,6 +582,9 @@ function updateRuntimeStatus() {
     el.badgeRuntime.textContent = text;
     el.badgeRuntime.className = cls;
   }
+  // 顶栏收起态的运行时徽章与主徽章保持一致
+  el.badgeRuntimeSlim.textContent = text;
+  el.badgeRuntimeSlim.className = cls;
 }
 
 /** 根据运行时状态刷新按钮可用性。 */
@@ -617,12 +635,12 @@ function ensureEditor() {
     return;
   }
   const initial = buildBaseConfig();
-  editorHandle = api.mountEditor(el.editorHost, initial, mockHass);
+  editorHandle = api.mountEditor(el.stageBoard, initial, mockHass);
   // 与 HA 一致：编辑器配置变化（config-changed）即回填给运行中的面板元素，无需手动「重新应用」
-  el.editorHost.addEventListener('config-changed', handleEditorConfigChanged);
+  el.stageBoard.addEventListener('config-changed', handleEditorConfigChanged);
   // 初始基线：编辑器未被改动时视为「已同步」
   appliedSnapshot = initial;
-  log('ok', '配置编辑器已内嵌（左工具栏 / 中预览画布 / 右属性面板）');
+  log('ok', '配置编辑器已内嵌（菜单栏 / 分类区 / 预览画布 / 属性区 / 状态栏）');
   updateDirtyBadge();
 }
 
@@ -692,6 +710,133 @@ async function deleteDevice(id) {
   }
 }
 
+/* ============================ 实测台 UI 布局（顶栏收起 / 底栏高度·收起） ============================ */
+
+/** 实测台 UI 偏好（仅 UI，不涉及插件配置） */
+/** @type {{ topCollapsed: boolean, bottomH: number, bottomCollapsed: boolean }} */
+const devLayout = { topCollapsed: false, bottomH: BOTTOM_DEFAULT, bottomCollapsed: false };
+
+/** 底栏最大高度：取视口 65% 与最小高度的大者 */
+function bottomMaxHeight() {
+  return Math.max(BOTTOM_MIN, Math.round(window.innerHeight * 0.65));
+}
+
+/**
+ * 裁剪底栏高度到合法区间。
+ * @param {number} h
+ * @returns {number}
+ */
+function clampBottomH(h) {
+  const n = Number(h);
+  if (!Number.isFinite(n)) return BOTTOM_DEFAULT;
+  return Math.min(bottomMaxHeight(), Math.max(BOTTOM_MIN, Math.round(n)));
+}
+
+/** 读取本地 UI 偏好（异常/缺失/损坏一律回默认，不影响实测台使用） */
+function loadDevLayout() {
+  try {
+    const raw = window.localStorage.getItem(DEV_LAYOUT_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    devLayout.topCollapsed = parsed.topCollapsed === true;
+    devLayout.bottomCollapsed = parsed.bottomCollapsed === true;
+    devLayout.bottomH = clampBottomH(parsed.bottomH);
+  } catch {
+    // 隐私模式 / 数据损坏：忽略，保持默认
+  }
+}
+
+/** 持久化 UI 偏好 */
+function saveDevLayout() {
+  try {
+    window.localStorage.setItem(DEV_LAYOUT_KEY, JSON.stringify(devLayout));
+  } catch {
+    // 配额不足等：忽略
+  }
+}
+
+/** 将 UI 偏好应用到 DOM（bootstrap 最先调用，防闪跳） */
+function applyDevLayout() {
+  el.topbar.classList.toggle('slim', devLayout.topCollapsed);
+  el.bottombar.classList.toggle('collapsed', devLayout.bottomCollapsed);
+  document.documentElement.style.setProperty('--bottombar-h', clampBottomH(devLayout.bottomH) + 'px');
+}
+
+/**
+ * 收起 / 展开顶栏。
+ * @param {boolean} collapsed
+ */
+function setTopCollapsed(collapsed) {
+  devLayout.topCollapsed = collapsed;
+  el.topbar.classList.toggle('slim', collapsed);
+  saveDevLayout();
+  log('info', collapsed ? '已收起顶栏（点击「展开顶栏」恢复）' : '已展开顶栏');
+}
+
+/**
+ * 收起 / 展开底栏。
+ * @param {boolean} collapsed
+ */
+function setBottomCollapsed(collapsed) {
+  devLayout.bottomCollapsed = collapsed;
+  el.bottombar.classList.toggle('collapsed', collapsed);
+  saveDevLayout();
+  log('info', collapsed ? '已收起底栏（点击「展开」恢复）' : '已展开底栏');
+}
+
+/** 恢复底栏默认高度并展开 */
+function restoreBottomHeight() {
+  devLayout.bottomCollapsed = false;
+  devLayout.bottomH = BOTTOM_DEFAULT;
+  el.bottombar.classList.remove('collapsed');
+  document.documentElement.style.setProperty('--bottombar-h', BOTTOM_DEFAULT + 'px');
+  saveDevLayout();
+  log('info', '底栏高度已恢复默认（' + BOTTOM_DEFAULT + 'px）');
+}
+
+/**
+ * 底栏向上拖高（pointer capture + 全局 sp-dev-resizing 类）。
+ * @param {PointerEvent} ev
+ */
+function startBottomResize(ev) {
+  if (ev.button !== 0) return;
+  ev.preventDefault();
+  if (devLayout.bottomCollapsed) setBottomCollapsed(false);
+  const startY = ev.clientY;
+  const startH = clampBottomH(devLayout.bottomH);
+
+  /** @param {PointerEvent} e */
+  const onMove = (e) => {
+    // 向上拖（clientY 减小）→ 高度增大
+    devLayout.bottomH = clampBottomH(startH + (startY - e.clientY));
+    document.documentElement.style.setProperty('--bottombar-h', devLayout.bottomH + 'px');
+  };
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    document.documentElement.classList.remove('sp-dev-resizing');
+    saveDevLayout();
+    log('info', '底栏高度：' + devLayout.bottomH + 'px');
+  };
+
+  document.documentElement.classList.add('sp-dev-resizing');
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+}
+
+/** 窗口尺寸变化时重新裁剪底栏高度（避免超过新视口 65%） */
+function onWindowResize() {
+  const clamped = clampBottomH(devLayout.bottomH);
+  if (clamped !== devLayout.bottomH) {
+    devLayout.bottomH = clamped;
+    document.documentElement.style.setProperty('--bottombar-h', clamped + 'px');
+    saveDevLayout();
+  }
+}
+
 /* ============================ 事件绑定与启动 ============================ */
 
 /** 注册所有事件监听（含全局异常入日志）。 */
@@ -711,6 +856,15 @@ function bindEvents() {
     log('info', '日志已清空');
   });
 
+  // 实测台布局交互：顶栏收起/展开、底栏拖高/收起/恢复默认
+  el.btnTopCollapse.addEventListener('click', () => setTopCollapsed(true));
+  el.btnTopExpand.addEventListener('click', () => setTopCollapsed(false));
+  el.btnBottomCollapse.addEventListener('click', () => setBottomCollapsed(true));
+  el.btnBottomExpand.addEventListener('click', () => setBottomCollapsed(false));
+  el.btnRestoreBottom.addEventListener('click', restoreBottomHeight);
+  el.bottombarResizer.addEventListener('pointerdown', startBottomResize);
+  window.addEventListener('resize', onWindowResize);
+
   // 全局异常入日志：确保「控制台无报错」可自证
   window.addEventListener('error', (ev) => {
     log('error', 'window error：' + (ev.message || '未知错误') + (ev.filename ? ' @ ' + ev.filename + ':' + ev.lineno : ''));
@@ -725,8 +879,11 @@ function bindEvents() {
   window.addEventListener('keydown', markInput, true);
 }
 
-/** 启动：初始禁用 → 加载产物 → 内嵌编辑器 → 初始化设备列表 → 状态轮询。 */
+/** 启动：应用 UI 布局 → 初始禁用 → 加载产物 → 内嵌编辑器 → 初始化设备列表 → 状态轮询。 */
 async function bootstrap() {
+  // 最先应用布局偏好，避免刷新闪跳
+  loadDevLayout();
+  applyDevLayout();
   // PrimeVue 深色主题（编辑器内部组件跟随；与实测台整体风格一致）
   document.documentElement.classList.add('snooze-editor-dark');
   updateActionButtons();

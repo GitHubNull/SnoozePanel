@@ -4,6 +4,22 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-09-12 19:38:36
+
+### Added
+- 编辑器五区布局：插件菜单栏 / 组件分类区 / 画布 / 属性区 / 状态栏，多宿主（HA 卡片弹窗、侧边栏、dev 实测台）呈现同一套布局
+- 画布网格与磁吸附对齐：默认显示网格（双轴 1px 渐变 + `background-size` 步长%）并默认开启磁吸，边缘接近网格线时显示参考线；网格层仅编辑态渲染
+- 文本组件显示开关：`TextComponent.show`（缺省视为显示，兼容旧配置；关闭后屏保不渲染该项）
+- `useEditorLayout`：面板宽度/收起态与画布网格/磁吸偏好统一读写（localStorage，纯 UI 偏好，不涉及配置资产）
+- 测试：`drag.spec.ts` 新增 `snapEdges` 吸附用例（阈值触发 / 多边缘取最近 / 关闭 / NaN 防护），`config.spec.ts` 新增 texts `show` 缺省用例
+
+### Changed
+- `EditorApp.vue` 重构拆分：全局配置浮层拆为 `src/editor/panels/`（Basic / Appearance / Conditions / Device / Advanced + panel.css）；删除 `TextsForm.vue`（并入属性面板）
+- `drag.ts` 新增手势 `onStart` 回调（供调用方量测几何）与 `snapEdges` 吸附纯函数（吸附在 clamp 之后执行，不越界）
+- `ScreensaverApp.vue` 编辑态渲染网格层 / 吸附参考线 / 点选联动
+- `SidebarApp.vue` 适配五区外壳（max-width 1200px、显式高度避免塌陷）
+- dev 实测台与文档同步：ARCHITECTURE 决策 13、AGENTS 目录结构、符号级维护指南、代码结构导读
+
 ## [0.3.1] - 2026-09-12 17:24:57
 
 ### Added

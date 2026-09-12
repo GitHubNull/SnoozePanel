@@ -22,14 +22,21 @@ const props = withDefaults(
     deviceId: string;
     /** 是否编辑态（相对定位铺满宿主，显示拖拽/缩放手柄，供编辑器预览画布用） */
     editMode?: boolean;
+    /** 画布网格与磁吸附偏好（仅编辑态生效） */
+    grid?: { show: boolean; snap: boolean; step: number };
+    /** 当前选中组件 key（仅编辑态生效，与编辑器左右面板共用） */
+    selected?: string;
   }>(),
   {
     editMode: false,
+    grid: () => ({ show: true, snap: true, step: 5 }),
+    selected: '',
   },
 );
 
 const emit = defineEmits<{
   (e: 'update:layout', compKey: string, layout: ComponentLayout): void;
+  (e: 'select', compKey: string): void;
 }>();
 
 // 响应式 now / hass 由 mount 层通过 provide 注入
@@ -117,7 +124,8 @@ const placedComponents = computed<PlacedComp[]>(() => {
     list.push({ key: 'weather', layout: c.weather.layout, color: c.weather.color });
   }
   c.texts.forEach((t, i) => {
-    if (compVisible(`text_${i}`, true)) {
+    // 每条自定义文本可独立显隐（show 缺省视为显示）
+    if (compVisible(`text_${i}`, t.show !== false)) {
       list.push({ key: `text_${i}`, layout: t.layout, color: t.color });
     }
   });
@@ -127,6 +135,30 @@ const placedComponents = computed<PlacedComp[]>(() => {
 function onLayoutUpdate(compKey: string, layout: ComponentLayout): void {
   emit('update:layout', compKey, layout);
 }
+
+/** 画布点选组件 → 透传给编辑器（与左右面板选中态联动） */
+function onSelect(compKey: string): void {
+  emit('select', compKey);
+}
+
+// ---- 编辑态：网格叠加层与吸附参考线 ----
+/** 吸附参考线状态（仅当组件边缘吸附命中时由子组件 emit 命中的网格线位置，结束时清空） */
+const guide = ref<{ x: number | null; y: number | null }>({ x: null, y: null });
+
+function onGuide(next: { x: number | null; y: number | null }): void {
+  guide.value = next;
+}
+
+/**
+ * 网格叠加层样式：双轴 1px 线 + background-size 随网格步长百分比自适应。
+ * 无需 JS 重算——百分比尺寸会随画布尺寸自动伸缩。
+ */
+const gridStyle = computed(() => ({
+  backgroundImage:
+    'linear-gradient(to right, rgba(255,255,255,0.14) 1px, transparent 1px),' +
+    'linear-gradient(to bottom, rgba(255,255,255,0.14) 1px, transparent 1px)',
+  backgroundSize: `${props.grid.step}% ${props.grid.step}%`,
+}));
 
 const themeVars = computed(() => ({
   '--snooze-text': theme.value.text,
@@ -141,6 +173,9 @@ const themeVars = computed(() => ({
   <div v-if="overallVisible" class="snoozepanel" :class="{ 'edit-mode': editMode }" :style="[backgroundStyle, themeVars]">
     <div class="dim" :style="{ background: `rgba(0,0,0,${config.background.dim})` }"></div>
 
+    <!-- 编辑态网格叠加层（仅 editMode 渲染，生产屏保不出现；pointer-events:none 不挡交互） -->
+    <div v-if="editMode && grid.show" class="grid-layer" :style="gridStyle"></div>
+
     <!-- 全部组件统一用 ComponentWrapper 渲染（自由布局 + 可选编辑态） -->
     <ComponentWrapper
       v-for="item in placedComponents"
@@ -148,9 +183,14 @@ const themeVars = computed(() => ({
       :layout="item.layout"
       :color="item.color"
       :editable="editMode"
+      :selected="editMode && selected === item.key"
+      :snap="grid.snap"
+      :grid-step="grid.step"
       :comp-key="item.key"
       :base-width="baseWidthFor(item.key)"
       @update:layout="onLayoutUpdate(item.key, $event)"
+      @select="onSelect"
+      @guide="onGuide"
     >
       <component
         :is="faceComponent"
@@ -182,6 +222,12 @@ const themeVars = computed(() => ({
       />
     </ComponentWrapper>
 
+    <!-- 编辑态吸附参考线（仅在组件边缘吸附命中时显示的对齐网格高亮线） -->
+    <template v-if="editMode">
+      <div v-if="guide.x !== null" class="guide-line guide-v" :style="{ left: guide.x + '%' }"></div>
+      <div v-if="guide.y !== null" class="guide-line guide-h" :style="{ top: guide.y + '%' }"></div>
+    </template>
+
     <!-- 设备 id 角落标识 -->
     <div class="device-id">{{ deviceId }}</div>
   </div>
@@ -206,6 +252,34 @@ const themeVars = computed(() => ({
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+/* 编辑态网格叠加层：双轴 1px 线按 background-size（= 步长%）平铺 */
+.grid-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* 吸附参考线：高亮横/纵线，显示在组件之上 */
+.guide-line {
+  position: absolute;
+  pointer-events: none;
+  z-index: 15;
+  background: var(--primary-color, #5ea0ff);
+  box-shadow: 0 0 4px rgba(94, 160, 255, 0.8);
+}
+.guide-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+.guide-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-0.5px);
 }
 .device-id {
   position: absolute;

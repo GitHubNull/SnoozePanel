@@ -147,6 +147,8 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
         .map((t) => ({
           content: t.content as string,
           layout: normalizeLayout(t.layout, FALLBACK_LAYOUTS.text),
+          // show 缺省视为显示（兼容旧配置），仅显式 false 才隐藏
+          show: bool(t.show, true),
           color: normalizeColor(t.color),
         }))
     : [];

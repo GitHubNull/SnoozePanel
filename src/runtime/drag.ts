@@ -4,12 +4,17 @@
  * 供 ComponentWrapper 在编辑态下使用：
  *   - makeDraggable：按住组件本体拖动，实时回调百分比坐标
  *   - makeResizable：按住右下角缩放手柄拖动，实时回调百分比尺寸
+ *   - snapEdges：把组件边缘吸附到网格线（磁吸附对齐，纯函数，供调用方组合）
  *
  * 坐标/尺寸均为相对父容器的百分比（0-100），与 ComponentLayout 对齐。
+ * 手势只负责报告原始坐标/尺寸，不内置吸附；吸附由调用方基于「可见内容边缘」
+ * 用 snapEdges 完成（吸附在裁剪之后执行，故不会因吸附而越界）。
  * 支持触摸（touch-action: none 由调用方 CSS 保证）。
  */
 
 export interface DragCallbacks {
+  /** 手势开始回调（可用于在此刻量测几何，如组件可见边缘半宽/半高） */
+  onStart?(): void;
   /** 拖动中实时回调（百分比坐标） */
   onMove(x: number, y: number): void;
   /** 拖动结束回调（百分比坐标） */
@@ -17,6 +22,8 @@ export interface DragCallbacks {
 }
 
 export interface ResizeCallbacks {
+  /** 手势开始回调（可用于在此刻量测几何） */
+  onStart?(): void;
   /** 缩放中实时回调（百分比尺寸） */
   onResize(w: number, h: number): void;
   /** 缩放结束回调（百分比尺寸） */
@@ -30,7 +37,7 @@ export type Cleanup = () => void;
  * 使元素可拖拽。
  * @param el 目标元素（position: absolute，left/top 百分比定位）
  * @param container 父容器（用于计算百分比）
- * @param cb 回调
+ * @param cb 回调（onStart 在手势开始时触发，供调用方量测几何）
  * @returns 清理函数
  */
 export function makeDraggable(el: HTMLElement, container: HTMLElement, cb: DragCallbacks): Cleanup {
@@ -49,6 +56,7 @@ export function makeDraggable(el: HTMLElement, container: HTMLElement, cb: DragC
     // 从当前样式读取百分比（非计算像素，避免缩放误差累积）
     startLeft = parseFloat(el.style.left) || 0;
     startTop = parseFloat(el.style.top) || 0;
+    cb.onStart?.();
     ev.preventDefault();
   };
 
@@ -118,6 +126,7 @@ export function makeResizable(
     startY = ev.clientY;
     startW = parseFloat(el.style.width) || 0;
     startH = parseFloat(el.style.height) || 0;
+    cb.onStart?.();
     ev.preventDefault();
     ev.stopPropagation(); // 阻止触发组件拖拽
   };
@@ -125,10 +134,10 @@ export function makeResizable(
   const onPointerMove = (ev: PointerEvent): void => {
     if (!resizing) return;
     const rect = container.getBoundingClientRect();
-    const { w, h } = computeResize(
+    const size = computeResize(
       startW, startH, ev.clientX - startX, ev.clientY - startY, rect.width, rect.height, lockAspect,
     );
-    cb.onResize(w, h);
+    cb.onResize(size.w, size.h);
   };
 
   const onPointerUp = (ev: PointerEvent): void => {
@@ -136,10 +145,10 @@ export function makeResizable(
     resizing = false;
     handle.releasePointerCapture(ev.pointerId);
     const rect = container.getBoundingClientRect();
-    const { w, h } = computeResize(
+    const size = computeResize(
       startW, startH, ev.clientX - startX, ev.clientY - startY, rect.width, rect.height, lockAspect,
     );
-    cb.onEnd?.(w, h);
+    cb.onEnd?.(size.w, size.h);
   };
 
   handle.addEventListener('pointerdown', onPointerDown);
@@ -194,6 +203,35 @@ export function computeResize(
   // 高度自适应（startH≤0）时保持 h=0，不因缩放而强制写入高度
   const h = startH > 0 ? clamp(startH + (dy / safeH) * 100, 5, 100) : 0;
   return { w, h };
+}
+
+/**
+ * 纯函数：把组件的一组候选边缘（%）吸附到最近的网格线（磁吸附对齐）。
+ * 仅当某条边缘距某条网格线 <= threshold 时才命中「吸附」——返回使该边缘精确对齐
+ * 网格线所需的位移 delta 与命中的网格线位置 line；无命中的边缘一律不吸附，
+ * 返回 { delta: 0, line: null }（拖拽时即体现为自由移动、且不显示参考线）。
+ * 这样参考线只会出现在组件边缘「快到」网格线时，而不是无脑常显。
+ * step<=0 或 threshold<=0（或非法）时始终不吸附。
+ * @param edges 候选边缘位置（%，如组件的左缘与右缘）
+ * @param step 网格步长（%）
+ * @param threshold 吸附触发阈值（%）；须小于 step/2，网格之间才会留有不吸附的自由区
+ */
+export function snapEdges(
+  edges: number[],
+  step: number,
+  threshold: number,
+): { delta: number; line: number | null } {
+  if (!(step > 0) || !(threshold > 0)) return { delta: 0, line: null };
+  let best: { delta: number; line: number; dist: number } | null = null;
+  for (const edge of edges) {
+    if (!Number.isFinite(edge)) continue;
+    const line = Math.round(edge / step) * step;
+    const dist = Math.abs(edge - line);
+    if (dist <= threshold && (!best || dist < best.dist)) {
+      best = { delta: line - edge, line, dist };
+    }
+  }
+  return best ? { delta: best.delta, line: best.line } : { delta: 0, line: null };
 }
 
 function clamp(v: number, min: number, max: number): number {

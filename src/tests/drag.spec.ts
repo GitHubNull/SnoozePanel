@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeResize } from '../runtime/drag';
+import { computeResize, snapEdges } from '../runtime/drag';
 import { baseWidthFor } from '../core/types';
 
 describe('computeResize 独立轴向缩放（lockAspect=false）', () => {
@@ -57,6 +57,37 @@ describe('computeResize 边界防护', () => {
     const r = computeResize(40, 0, 100, 100, 0, 0);
     expect(Number.isFinite(r.w)).toBe(true);
     expect(Number.isFinite(r.h)).toBe(true);
+  });
+});
+
+describe('snapEdges 边缘网格吸附（阈值触发）', () => {
+  it('边缘靠近网格线时命中，返回对齐位移与命中线', () => {
+    // 左缘 23 距 25 为 2（= 阈值）→ 命中，需右移 +2
+    expect(snapEdges([23], 5, 2)).toEqual({ delta: 2, line: 25 });
+  });
+
+  it('已在网格线上时位移为 0', () => {
+    expect(snapEdges([50], 5, 2)).toEqual({ delta: 0, line: 50 });
+  });
+
+  it('多条边缘时取距离最近的一条', () => {
+    // 左缘 37.5（距 40=2.5 超阈值不中）、右缘 61（距 60=1）→ 命中右缘，左移 -1
+    expect(snapEdges([37.5, 61], 5, 2)).toEqual({ delta: -1, line: 60 });
+  });
+
+  it('边缘远离网格线时不吸附（网格之间留有自由区）', () => {
+    // 27.5 距 25 与 30 均为 2.5 > 阈值 2 → 不吸附、不显示参考线
+    expect(snapEdges([27.5], 5, 2)).toEqual({ delta: 0, line: null });
+  });
+
+  it('step<=0 或 threshold<=0 时不吸附（关闭磁吸）', () => {
+    expect(snapEdges([23], 0, 2)).toEqual({ delta: 0, line: null });
+    expect(snapEdges([23], 5, 0)).toEqual({ delta: 0, line: null });
+  });
+
+  it('忽略非有限值（如高度自适应导致的 NaN）', () => {
+    expect(snapEdges([Number.NaN, 23], 5, 2)).toEqual({ delta: 2, line: 25 });
+    expect(snapEdges([Number.POSITIVE_INFINITY], 5, 2)).toEqual({ delta: 0, line: null });
   });
 });
 

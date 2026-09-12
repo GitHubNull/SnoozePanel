@@ -1,0 +1,78 @@
+/*
+ * 菜单浮层内表单的通用样式。
+ * 各面板以 <style scoped src="./panel.css"></style> 复用，避免逐文件重复定义。
+ * 变量沿用 HA 主题变量，缺省时回退到插件默认色。
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field > label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.field small {
+  color: var(--secondary-text-color, #888);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.inline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.inline-row label {
+  font-size: 13px;
+}
+.w-full {
+  width: 100%;
+}
+.code {
+  font-family: monospace;
+  font-size: 12.5px;
+}
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--secondary-text-color, #888);
+}
+.weekday-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+/* Chip 根元素会继承父级 scope 标识，故直接选择 .p-chip 即可生效 */
+.weekday-chips .p-chip {
+  cursor: pointer;
+  opacity: 0.45;
+}
+.weekday-chips .p-chip.active {
+  opacity: 1;
+  background: var(--primary-color, #5ea0ff);
+  color: #fff;
+}
+.device-id-text {
+  font-family: monospace;
+  font-size: 13px;
+  padding: 6px 10px;
+  background: var(--card-background-color, #f5f5f5);
+  border-radius: 6px;
+  user-select: text;
+}
+.save-hint {
+  font-size: 13px;
+  color: var(--primary-color, #5ea0ff);
+}
