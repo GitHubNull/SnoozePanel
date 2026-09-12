@@ -7,8 +7,11 @@
  * 编辑草稿与选中态经 provide/inject 获取（共享 reactive，就地写回）；仅面板开合等
  * 纯 UI 动作经 emit 回传 EditorApp。
  */
+import { computed } from 'vue';
 import { listFaceOptions } from '@/ui/faces/registry';
+import { listWidgetStyleOptions } from '@/ui/widgets/registry';
 import FacePreview from '@/ui/components/FacePreview.vue';
+import WidgetPreview from '@/ui/components/WidgetPreview.vue';
 import { injectEditorDraft, injectEditorSelection } from '../editorContext';
 import Button from 'primevue/button';
 import ToggleSwitch from 'primevue/toggleswitch';
@@ -28,6 +31,7 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'open-marketplace'): void;
+  (e: 'open-widget-marketplace'): void;
   (e: 'toggle-panel'): void;
   (e: 'restore-width'): void;
   (e: 'resize-start', ev: PointerEvent): void;
@@ -42,6 +46,8 @@ const {
   selectedLabel,
   currentLayout,
   currentColor,
+  currentWidgetType,
+  currentStyle,
   selectedTextIndex,
   selectedTextContent,
   selectedTextShow,
@@ -57,8 +63,18 @@ function faceLabel(id: string): string {
   return CLOCK_STYLES.find((f) => f.value === id)?.label ?? id;
 }
 
+/** 当前内容组件样式的中文名（用于样式选择卡片） */
+const currentWidgetStyleLabel = computed(() => {
+  const t = currentWidgetType.value;
+  if (!t) return '';
+  return listWidgetStyleOptions(t).find((s) => s.style === currentStyle.value)?.label ?? currentStyle.value;
+});
+
 function onOpenMarketplace(): void {
   emit('open-marketplace');
+}
+function onOpenWidgetMarketplace(): void {
+  emit('open-widget-marketplace');
 }
 function onTogglePanel(): void {
   emit('toggle-panel');
@@ -135,6 +151,16 @@ function onResizeStart(ev: PointerEvent): void {
 
         <!-- 日历属性 -->
         <template v-if="selectedComponent === 'calendar'">
+          <!-- 样式选择卡片（内容组件样式选择器） -->
+          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
+            <div class="face-selector-preview">
+              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
+            </div>
+            <div class="face-selector-info">
+              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
+              <span class="face-selector-action">点击进入样式选择</span>
+            </div>
+          </div>
           <div class="field">
             <label>周起始日</label>
             <Select
@@ -155,6 +181,16 @@ function onResizeStart(ev: PointerEvent): void {
 
         <!-- 日期属性（ISO 8601 占位符格式模板） -->
         <template v-if="selectedComponent === 'date'">
+          <!-- 样式选择卡片（内容组件样式选择器） -->
+          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
+            <div class="face-selector-preview">
+              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
+            </div>
+            <div class="face-selector-info">
+              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
+              <span class="face-selector-action">点击进入样式选择</span>
+            </div>
+          </div>
           <div class="field">
             <label>日期格式模板</label>
             <InputText v-model="draft.components.date.format" class="w-full" placeholder="YYYY年MM月DD日 dddd" />
@@ -164,6 +200,16 @@ function onResizeStart(ev: PointerEvent): void {
 
         <!-- 农历属性 -->
         <template v-if="selectedComponent === 'lunar'">
+          <!-- 样式选择卡片（内容组件样式选择器） -->
+          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
+            <div class="face-selector-preview">
+              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
+            </div>
+            <div class="face-selector-info">
+              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
+              <span class="face-selector-action">点击进入样式选择</span>
+            </div>
+          </div>
           <div class="field">
             <label>格式模板</label>
             <InputText v-model="draft.components.lunar.format" class="w-full" placeholder="{lunar_month}{lunar_day}" />
@@ -173,6 +219,16 @@ function onResizeStart(ev: PointerEvent): void {
 
         <!-- 天气属性 -->
         <template v-if="selectedComponent === 'weather'">
+          <!-- 样式选择卡片（内容组件样式选择器） -->
+          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
+            <div class="face-selector-preview">
+              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
+            </div>
+            <div class="face-selector-info">
+              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
+              <span class="face-selector-action">点击进入样式选择</span>
+            </div>
+          </div>
           <div class="field">
             <label>天气实体</label>
             <Select
@@ -187,6 +243,16 @@ function onResizeStart(ev: PointerEvent): void {
 
         <!-- 单条自定义文本属性（在组件分类中选中某条文本时） -->
         <template v-if="selectedTextIndex >= 0">
+          <!-- 样式选择卡片（内容组件样式选择器） -->
+          <div v-if="currentWidgetType" class="face-selector-card" @click="onOpenWidgetMarketplace">
+            <div class="face-selector-preview">
+              <WidgetPreview :type="currentWidgetType" :style="currentStyle" :theme="draft.theme" />
+            </div>
+            <div class="face-selector-info">
+              <span class="face-selector-name">{{ currentWidgetStyleLabel }}</span>
+              <span class="face-selector-action">点击进入样式选择</span>
+            </div>
+          </div>
           <div class="field">
             <label>文本内容</label>
             <InputText

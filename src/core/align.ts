@@ -25,6 +25,12 @@ export type AlignKind = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bott
 /** 分布轴向：水平 / 垂直 */
 export type DistributeAxis = 'horizontal' | 'vertical';
 
+/** 屏幕居中对齐方式：水平 / 垂直 / 双向 */
+export type ScreenAlignKind = 'hcenter' | 'vcenter' | 'center';
+
+/** 画布中心坐标（%）：屏幕对齐的统一基准 */
+export const SCREEN_CENTER = 50;
+
 /** 中心位移（画布百分比） */
 export interface Delta {
   dx: number;
@@ -104,4 +110,28 @@ export function distributeDeltas(boxes: Box[], axis: DistributeAxis): Delta[] {
     out[idx] = axis === 'horizontal' ? { dx: delta, dy: 0 } : { dx: 0, dy: delta };
   }
   return out;
+}
+
+/**
+ * 以「屏幕中心」为基准，计算选区整体位移：把选区外接框的中心移到屏幕中心。
+ * 与 alignDeltas（选区基准）不同，本函数返回单一共享位移，选区各组件同步平移，保持相对布局。
+ * - hcenter：仅水平居中（dx 有效，dy=0）；
+ * - vcenter：仅垂直居中（dy 有效，dx=0）；
+ * - center：双向居中。
+ * boxes 为空时返回零位移。
+ */
+export function screenAlignDeltas(boxes: Box[], kind: ScreenAlignKind): Delta {
+  if (boxes.length === 0) return { ...ZERO };
+
+  const left = Math.min(...boxes.map((b) => b.left));
+  const right = Math.max(...boxes.map((b) => b.right));
+  const top = Math.min(...boxes.map((b) => b.top));
+  const bottom = Math.max(...boxes.map((b) => b.bottom));
+  const cx = (left + right) / 2;
+  const cy = (top + bottom) / 2;
+
+  return {
+    dx: kind === 'vcenter' ? 0 : SCREEN_CENTER - cx,
+    dy: kind === 'hcenter' ? 0 : SCREEN_CENTER - cy,
+  };
 }

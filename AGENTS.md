@@ -34,7 +34,7 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   ├── ui/                 # 屏保 UI
 │   │   ├── ScreensaverApp.vue
 │   │   ├── components/     # ComponentWrapper / FacePreview（缩略预览摄像机）/ DevicePreview / ScreenRulers
-│   │   ├── widgets/        # 内容组件框架：registry.ts（import.meta.glob 构建时收集）+ types.ts + 各组件目录（calendar/date/lunar/weather/text）+ thirdparty/
+│   │   ├── widgets/        # 内容组件框架：registry.ts（import.meta.glob 构建时收集）+ types.ts + 类型/样式两级目录（<type>/<style>/…）+ thirdparty/
 │   │   ├── faces/          # 表盘框架：registry.ts（import.meta.glob 构建时收集）+ types.ts + 各表盘目录（digital/ring/analog/chrono/minimal/orbit）
 │   │   └── themes.ts       # midnight / paper 两套主题
 │   ├── editor/             # GUI 编辑器

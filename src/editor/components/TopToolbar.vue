@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * 编辑器顶部工具条：位于菜单栏与工作区之间，提供「对齐」与「图层」两个下拉菜单。
+ * 编辑器顶部工具条：位于菜单栏与工作区之间，提供「撤销/恢复」按钮与「对齐」「图层」两个下拉菜单。
  *
  * 动作经 provide/inject 获取（EditorApp 提供的 EditorActionsKey）；选中数量经选中态上下文读取，
- * 用于控制菜单项禁用态（对齐需 ≥2、分布需 ≥3；图层需有主选中）。
+ * 用于控制菜单项禁用态（对齐屏 ≥1、选区基准对齐 ≥2、分布 ≥3；图层需有主选中）。
  * 菜单采用 PrimeVue Menu 的 popup 模式，item 插槽自定义「图标 + 中文 + 快捷键」布局。
  */
 import { computed, ref } from 'vue';
@@ -24,6 +24,7 @@ const actions = injectEditorActions();
 
 const canAlign = actions.alignment.canAlign;
 const canDistribute = actions.alignment.canDistribute;
+const canAlignToScreen = actions.alignment.canAlignToScreen;
 const hasSelection = computed(() => selection.selectedCount.value > 0);
 
 const alignMenu = ref();
@@ -47,6 +48,10 @@ const alignItems = computed<TbItem[]>(() => {
     { separator: true },
     d('水平平均分布', 'Alt+H', 'horizontal'),
     d('垂直平均分布', 'Alt+V', 'vertical'),
+    { separator: true },
+    { label: '水平居中（对齐屏幕）', shortcut: 'Alt+Shift+C', icon: 'pi pi-align-center', disabled: !canAlignToScreen.value, command: () => actions.alignment.alignToScreen('hcenter') },
+    { label: '垂直居中（对齐屏幕）', shortcut: 'Alt+Shift+M', icon: 'pi pi-arrows-v', disabled: !canAlignToScreen.value, command: () => actions.alignment.alignToScreen('vcenter') },
+    { label: '屏幕居中', shortcut: 'Alt+Shift+E', icon: 'pi pi-expand', disabled: !canAlignToScreen.value, command: () => actions.alignment.alignToScreen('center') },
   ];
 });
 
@@ -78,6 +83,26 @@ function toggleLayer(ev: MouseEvent): void {
 <template>
   <div class="plugin-topbar">
     <span class="tb-hint">已选 {{ selection.selectedCount.value }} 项</span>
+    <Button
+      icon="pi pi-undo"
+      size="small"
+      text
+      rounded
+      title="撤销"
+      aria-label="撤销"
+      :disabled="!actions.history.canUndo.value"
+      @click="actions.history.undo()"
+    />
+    <Button
+      icon="pi pi-redo"
+      size="small"
+      text
+      rounded
+      title="恢复"
+      aria-label="恢复"
+      :disabled="!actions.history.canRedo.value"
+      @click="actions.history.redo()"
+    />
     <Button label="对齐" icon="pi pi-align-center" size="small" text @click="toggleAlign" />
     <Button label="图层" icon="pi pi-clone" size="small" text @click="toggleLayer" />
 

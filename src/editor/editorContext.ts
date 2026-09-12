@@ -14,6 +14,7 @@ import type { EditorLayoutState } from './useEditorLayout';
 import type { ComponentSelection } from './composables/useComponentSelection';
 import type { AlignmentActions } from './composables/useAlignmentActions';
 import type { LayerActions } from './composables/useLayerActions';
+import type { EditorHistory } from './composables/useEditorHistory';
 
 /** 编辑草稿（共享 reactive，编辑器内所有编辑的单一数据源） */
 export const EditorDraftKey: InjectionKey<SnoozeConfig> = Symbol('snooze-editor-draft');
@@ -30,6 +31,8 @@ export interface EditorActions {
   alignment: AlignmentActions;
   /** 图层动作 */
   layers: LayerActions;
+  /** 撤销 / 恢复历史 */
+  history: EditorHistory;
 }
 
 /** 注入编辑草稿（未提供时抛错，显式暴露使用位置问题） */

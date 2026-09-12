@@ -37,6 +37,14 @@ function strOrNull(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
+/** 内容组件默认样式 id（找不到/非法时的回退，与 ui 注册表默认一致） */
+const DEFAULT_WIDGET_STYLE = 'basic';
+
+/** 规范化内容组件样式 id：非空字符串透传（trim），否则回退默认（core 不依赖 ui 注册表） */
+function normalizeStyle(v: unknown, fallback: string = DEFAULT_WIDGET_STYLE): string {
+  return typeof v === 'string' && v.trim() ? v.trim() : fallback;
+}
+
 /** 夹取数值到 [min, max] */
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
@@ -169,6 +177,7 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
         .filter((t): t is Record<string, unknown> => isObject(t) && typeof t.content === 'string')
         .map((t) => ({
           content: t.content as string,
+          style: normalizeStyle(t.style),
           layout: normalizeLayout(t.layout, FALLBACK_LAYOUTS.text),
           // show 缺省视为显示（兼容旧配置），仅显式 false 才隐藏
           show: bool(t.show, true),
@@ -224,6 +233,7 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
       },
       calendar: {
         show: bool(calendar.show, d.components.calendar.show),
+        style: normalizeStyle(calendar.style),
         week_start: calendar.week_start === 0 ? 0 : 1,
         show_week_number: bool(calendar.show_week_number, d.components.calendar.show_week_number),
         format: str(calendar.format, d.components.calendar.format),
@@ -233,6 +243,7 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
       },
       date: {
         show: bool(date.show, d.components.date.show),
+        style: normalizeStyle(date.style),
         format: str(date.format, d.components.date.format),
         layout: normalizeLayout(date.layout, FALLBACK_LAYOUTS.date),
         color: normalizeColor(date.color),
@@ -240,6 +251,7 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
       },
       lunar: {
         show: bool(lunar.show, d.components.lunar.show),
+        style: normalizeStyle(lunar.style),
         format: str(lunar.format, d.components.lunar.format),
         layout: normalizeLayout(lunar.layout, FALLBACK_LAYOUTS.lunar),
         color: normalizeColor(lunar.color),
@@ -247,6 +259,7 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
       },
       weather: {
         show: bool(weather.show, d.components.weather.show),
+        style: normalizeStyle(weather.style),
         entity: str(weather.entity, d.components.weather.entity),
         layout: normalizeLayout(weather.layout, FALLBACK_LAYOUTS.weather),
         color: normalizeColor(weather.color),

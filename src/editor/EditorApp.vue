@@ -25,6 +25,7 @@ import { useEditorDraft } from './composables/useEditorDraft';
 import { useComponentSelection } from './composables/useComponentSelection';
 import { useAlignmentActions } from './composables/useAlignmentActions';
 import { useLayerActions } from './composables/useLayerActions';
+import { useEditorHistory } from './composables/useEditorHistory';
 import { useEditorShortcuts } from './composables/useEditorShortcuts';
 import { useDeviceSave } from './composables/useDeviceSave';
 import { EditorDraftKey, EditorLayoutKey, EditorSelectionKey, EditorActionsKey } from './editorContext';
@@ -35,6 +36,7 @@ import EditorCanvas from './components/EditorCanvas.vue';
 import PropertyPanel from './components/PropertyPanel.vue';
 import StatusBar from './components/StatusBar.vue';
 import FaceMarketplace from './FaceMarketplace.vue';
+import WidgetMarketplace from './WidgetMarketplace.vue';
 import Toast from 'primevue/toast';
 
 const props = defineProps<{
@@ -47,7 +49,7 @@ const emit = defineEmits<{
 }>();
 
 // ---- 本地草稿与对外变更桥接（回声防护 + 300ms 防抖 emit） ----
-const { draft } = useEditorDraft(props, emit);
+const { draft, isSyncing } = useEditorDraft(props, emit);
 // 编辑草稿 / UI 偏好 / 选中态经 provide 下发，供五区子组件注入（共享 reactive，就地写回）
 provide(EditorDraftKey, draft);
 
@@ -89,6 +91,59 @@ function onFaceSelected(faceId: string): void {
   draft.components.clock.style = faceId;
 }
 
+// ---- 内容组件样式市场模态 ----
+const widgetMarketplaceVisible = ref(false);
+/** 打开样式市场时记录的主选中组件 key（避免选择变动时写错组件） */
+const widgetMarketplaceKey = ref('');
+
+/** 由 key 推导内容组件类型（calendar/date/lunar/weather/text） */
+const widgetMarketplaceType = computed<string>(() => {
+  const key = widgetMarketplaceKey.value;
+  if (key.startsWith('text_')) return 'text';
+  return key;
+});
+
+/** 由 key 读取当前样式（供弹窗高亮「使用中」） */
+const widgetMarketplaceStyle = computed<string>(() => {
+  const key = widgetMarketplaceKey.value;
+  if (key.startsWith('text_')) return draft.components.texts[Number(key.slice(5))]?.style ?? '';
+  switch (key) {
+    case 'calendar': return draft.components.calendar.style;
+    case 'date': return draft.components.date.style;
+    case 'lunar': return draft.components.lunar.style;
+    case 'weather': return draft.components.weather.style;
+    default: return '';
+  }
+});
+
+/** 打开内容组件样式选择器（仅对日历/日期/农历/天气/文本生效） */
+function openWidgetMarketplace(): void {
+  const key = selection.selectedComponent.value;
+  if (!key || key === 'clock') return;
+  widgetMarketplaceKey.value = key;
+  widgetMarketplaceVisible.value = true;
+}
+
+/** 选中样式后写回草稿对应组件（按打开时记录的 key） */
+function onWidgetStyleSelected(style: string): void {
+  const key = widgetMarketplaceKey.value;
+  if (key.startsWith('text_')) {
+    const t = draft.components.texts[Number(key.slice(5))];
+    if (t) t.style = style;
+    return;
+  }
+  switch (key) {
+    case 'calendar': draft.components.calendar.style = style; break;
+    case 'date': draft.components.date.style = style; break;
+    case 'lunar': draft.components.lunar.style = style; break;
+    case 'weather': draft.components.weather.style = style; break;
+  }
+}
+
+function onWidgetMarketplaceClose(): void {
+  widgetMarketplaceVisible.value = false;
+}
+
 // ---- 设备级覆盖（后端持久化，含 Toast 反馈） ----
 const { deviceSaving, deviceSaved, onSaveDevice } = useDeviceSave(props, deviceId, draft);
 
@@ -112,9 +167,11 @@ function getCanvasEl(): HTMLElement | null {
 }
 const alignment = useAlignmentActions(selection, getCanvasEl);
 const layers = useLayerActions(selection);
-provide(EditorActionsKey, { alignment, layers });
-// 全局快捷键：Alt 系列对齐/分布、Ctrl+[ ] 系列图层（输入态自动屏蔽）
-useEditorShortcuts(alignment, layers);
+// 撤销 / 恢复历史（围绕草稿快照；HA 回声回填经 isSyncing 隔离不计入历史）
+const history = useEditorHistory(draft, isSyncing);
+provide(EditorActionsKey, { alignment, layers, history });
+// 全局快捷键：Alt 系列对齐/分布、Alt+Shift 系列对齐到屏幕、Ctrl+[ ] 系列图层、Ctrl+Z 系列撤销/恢复
+useEditorShortcuts(alignment, layers, history);
 
 // ---- 天气实体候选（从 hass 中筛 weather.*） ----
 const weatherEntities = computed(() => {
@@ -265,6 +322,7 @@ onBeforeUnmount(() => {
         :collapsed="propsCollapsed"
         :width="propsWidth"
         @open-marketplace="openMarketplace"
+        @open-widget-marketplace="openWidgetMarketplace"
         @toggle-panel="togglePanel('props')"
         @restore-width="restorePanelWidth('props')"
         @resize-start="onResizeStart('props', $event)"
@@ -283,6 +341,16 @@ onBeforeUnmount(() => {
       :hour24="draft.components.clock.hour24"
       @update:model-value="onFaceSelected"
       @close="onMarketplaceClose"
+    />
+
+    <!-- 内容组件样式市场模态（弹窗覆盖层） -->
+    <WidgetMarketplace
+      v-if="widgetMarketplaceVisible && widgetMarketplaceType"
+      :type="widgetMarketplaceType"
+      :model-value="widgetMarketplaceStyle"
+      :theme="draft.theme"
+      @update:model-value="onWidgetStyleSelected"
+      @close="onWidgetMarketplaceClose"
     />
   </div>
 </template>

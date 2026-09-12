@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * 农历内容组件（内置）。
+ * 农历·基础农历（内置样式，默认）。
  *
  * 从 options 读取 format（农历格式模板，占位符 {lunar_month}{lunar_day}{ganzhi}{zodiac}）。
  */
 import { computed } from 'vue';
 import { formatLunar } from '@/core/lunar';
-import type { WidgetProps } from '../types';
+import type { WidgetProps } from '@/ui/widgets/types';
 
 const props = defineProps<WidgetProps>();
 

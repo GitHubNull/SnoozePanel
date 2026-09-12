@@ -4,6 +4,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.0] - 2026-09-13 00:22:00
+
+### Added
+- 顶部工具栏撤销 / 恢复：新增 `useEditorHistory`（快照 + 基线，300ms 防抖把拖拽 / 连续输入合并为单步，上限 50 步）；`useEditorDraft` 暴露 `isSyncing` 同步信号隔离 HA 回声；工具栏 `pi pi-undo` / `pi pi-redo` 按钮与 Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z、Ctrl/Cmd+Y 快捷键（`applying` / `isSyncing` 双守卫避免幽灵历史步）
+- 对齐到屏幕（`core/align.ts` 新增 `screenAlignDeltas` + `useAlignmentActions.alignToScreen`）：以屏幕中心为基准，把选区外接框中心移到画布中心（水平 / 垂直 / 双向），选区各组件共享同一位移整体平移；工具栏对齐菜单新增三项 + Alt+Shift+C / M / E 快捷键
+- 内容组件「类型 / 样式」两级体系（`src/ui/widgets/` 重构）：由「一类型一目录」改为 `widgets/<type>/<style>/`，每类型内置 3 款样式 + 编辑器弹窗 `WidgetMarketplace.vue` 按键切换；新增 `WidgetPreview.vue` 缩略预览（样例 options + mock hass + 1s Ticker）；`getWidget(type, style)` / `listWidgetStyles` / `listWidgetStyleOptions` 等对外 API
+- 内容组件样式 15 款内置 + 5 款第三方样例：calendar(basic/compact/minimal + thirdparty fancy)、date(basic/badge/stacked + neon)、lunar(basic/pill/detail + seal)、weather(basic/card/inline + minimal)、text(basic/badge/quote + marquee)
+- 配置字段：`CalendarComponent` / `DateComponent` / `LunarComponent` / `WeatherComponent` / `TextComponent` 新增 `style`（`DEFAULT_CONFIG` + `normalizeConfig` 三步走，缺省归一为 `'basic'`）
+- 文档：新增 `doc/开发维护/第三方组件开发指南.md`；重写 `组件开发指南/01-基础篇/02-目录契约与注册机制.md`（类型 / 样式两级）
+- 测试：新增 `editorHistory.spec.ts`；扩展 `align.spec.ts`（`screenAlignDeltas`）；重写 `widgets.spec.ts`（每类型 4 样式 + 遍历全部样式挂载）；`config.spec.ts` 补风格归一用例
+
+### Changed
+- `ScreensaverApp.vue`：`PlacedComp` 增加 `style`，内容组件按 `getWidget(type, style)` 动态挂载（时钟仍走 faces 表盘）
+- `useComponentSelection.ts`：新增 `currentWidgetType` / `currentStyle` 派生读写（供属性面板 / 弹窗联动）
+- `PropertyPanel.vue`：日历 / 日期 / 农历 / 天气 / 单条文本属性块顶部新增「样式选择卡片」（点击进入样式选择器）
+- `useEditorDraft.ts` 返回值改为 `{ draft, isSyncing }`；`editorContext.ts` 的 `EditorActions` 增加 `history`
+
 ## [0.9.0] - 2026-09-13 00:01:10
 
 ### Added

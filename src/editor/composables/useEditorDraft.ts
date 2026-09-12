@@ -7,6 +7,9 @@
  *     → 草稿深度 watcher 触发 → 若不拦截会再次 emit，形成 emit → setConfig → emit 的无限循环。
  *     同步期间置位标记，待草稿 watcher 本轮执行完毕（nextTick）后复位；
  *   - 对外 emit 做 300ms 防抖，避免输入过程中频繁触发 config-changed。
+ *
+ * 另向历史记录暴露 isSyncing()：props 回填引起草稿同步的同一 flush 内均为 true，
+ * 供 useEditorHistory 区分「用户编辑」与「HA 回声回填」，避免生成幽灵历史步。
  */
 import { nextTick, reactive, watch } from 'vue';
 import type { SnoozeConfig } from '@/core/types';
@@ -14,6 +17,14 @@ import type { SnoozeConfig } from '@/core/types';
 /** 供桥接读取配置的 props 最小面 */
 interface DraftBridgeProps {
   config: SnoozeConfig;
+}
+
+/** useEditorDraft 返回值 */
+export interface EditorDraftBridge {
+  /** 本地编辑草稿（reactive，编辑器内唯一数据源） */
+  draft: SnoozeConfig;
+  /** 当前是否处于 props 回填同步窗口（true 时草稿变更非用户编辑） */
+  isSyncing: () => boolean;
 }
 
 /**
@@ -24,7 +35,7 @@ interface DraftBridgeProps {
 export function useEditorDraft(
   props: DraftBridgeProps,
   emit: (event: 'change', config: SnoozeConfig) => void,
-): { draft: SnoozeConfig } {
+): EditorDraftBridge {
   // 本地草稿，任何字段变更后整体 emit（深拷贝避免引用污染）
   const draft = reactive<SnoozeConfig>(JSON.parse(JSON.stringify(props.config)) as SnoozeConfig);
 
@@ -58,5 +69,5 @@ export function useEditorDraft(
     { deep: true },
   );
 
-  return { draft };
+  return { draft, isSyncing: () => syncingFromProps };
 }

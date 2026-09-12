@@ -52,6 +52,10 @@ export interface ComponentSelection {
   currentLayout: WritableComputedRef<ComponentLayout>;
   currentColor: WritableComputedRef<string>;
   setCurrentColor: (v: string) => void;
+  /** 主选中内容组件类型（clock 或未选中时为 null；calendar/date/lunar/weather/text 返回类型） */
+  currentWidgetType: ComputedRef<string | null>;
+  /** 主选中组件的样式 id（读写；clock 对应 clock.style 表盘 id，供展示或忽略） */
+  currentStyle: WritableComputedRef<string>;
   updateComponentLayout: (compKey: string, layout: ComponentLayout) => void;
   /** 按 key 读取任意组件 layout（不存在返回 null） */
   layoutByKey: (key: string) => ComponentLayout | null;
@@ -151,7 +155,7 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
 
   /** 新增一条自定义文本并立即选中（右侧随即出现该条文本的属性） */
   function addText(): void {
-    draft.components.texts.push({ content: '', layout: { ...DEFAULT_LAYOUTS.text }, show: true });
+    draft.components.texts.push({ content: '', style: 'basic', layout: { ...DEFAULT_LAYOUTS.text }, show: true });
     selectedComponent.value = `text_${draft.components.texts.length - 1}`;
   }
 
@@ -274,6 +278,48 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     currentColor.value = attachHexHash(String(v ?? ''));
   }
 
+  /** 主选中内容组件类型（clock / 未知为 null；文本条目统一视为 text） */
+  const currentWidgetType = computed<string | null>(() => {
+    const key = selectedComponent.value;
+    if (key.startsWith('text_')) return 'text';
+    return key === 'calendar' || key === 'date' || key === 'lunar' || key === 'weather'
+      ? key
+      : null;
+  });
+
+  /** 主选中组件的样式 id（读写草稿；clock 暴露 clock.style 供展示或忽略） */
+  const currentStyle = computed<string>({
+    get: () => {
+      const key = selectedComponent.value;
+      if (key.startsWith('text_')) {
+        return draft.components.texts[Number(key.slice(5))]?.style ?? '';
+      }
+      switch (key) {
+        case 'clock': return draft.components.clock.style;
+        case 'calendar': return draft.components.calendar.style;
+        case 'date': return draft.components.date.style;
+        case 'lunar': return draft.components.lunar.style;
+        case 'weather': return draft.components.weather.style;
+        default: return '';
+      }
+    },
+    set: (v: string) => {
+      const key = selectedComponent.value;
+      if (key.startsWith('text_')) {
+        const text = draft.components.texts[Number(key.slice(5))];
+        if (text) text.style = v;
+        return;
+      }
+      switch (key) {
+        case 'clock': draft.components.clock.style = v; break;
+        case 'calendar': draft.components.calendar.style = v; break;
+        case 'date': draft.components.date.style = v; break;
+        case 'lunar': draft.components.lunar.style = v; break;
+        case 'weather': draft.components.weather.style = v; break;
+      }
+    },
+  });
+
   /** 更新指定组件的 layout（数字输入直接绑定 draft，此处供预览画布拖拽回写） */
   function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
     setLayoutByKey(compKey, layout);
@@ -334,6 +380,8 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     currentLayout,
     currentColor,
     setCurrentColor,
+    currentWidgetType,
+    currentStyle,
     updateComponentLayout,
     layoutByKey,
     setLayoutByKey,

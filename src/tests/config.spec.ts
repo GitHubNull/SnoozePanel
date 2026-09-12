@@ -294,4 +294,42 @@ describe('normalizeConfig 配置规范化', () => {
     const c = normalizeConfig({ components: { texts: [{ content: 'x', options: { font_size: 20 } }] } });
     expect(c.components.texts[0].options).toEqual({ font_size: 20 });
   });
+
+  it('calendar/date/lunar/weather 缺省 style 归一为 basic', () => {
+    const c = normalizeConfig({ components: {} });
+    expect(c.components.calendar.style).toBe('basic');
+    expect(c.components.date.style).toBe('basic');
+    expect(c.components.lunar.style).toBe('basic');
+    expect(c.components.weather.style).toBe('basic');
+  });
+
+  it('组件 style 显式传入时透传（去首尾空白）', () => {
+    const c = normalizeConfig({
+      components: {
+        calendar: { style: 'compact' },
+        date: { style: 'badge' },
+        lunar: { style: ' detail ' },
+        weather: { style: 'card' },
+        texts: [{ content: 'x', style: 'quote' }],
+      },
+    });
+    expect(c.components.calendar.style).toBe('compact');
+    expect(c.components.date.style).toBe('badge');
+    expect(c.components.lunar.style).toBe('detail');
+    expect(c.components.weather.style).toBe('card');
+    expect(c.components.texts[0].style).toBe('quote');
+  });
+
+  it('组件 style 空串/非字符串回退 basic', () => {
+    const c = normalizeConfig({
+      components: {
+        calendar: { style: '' },
+        date: { style: 123 },
+        texts: [{ content: 'x' }],
+      },
+    });
+    expect(c.components.calendar.style).toBe('basic');
+    expect(c.components.date.style).toBe('basic');
+    expect(c.components.texts[0].style).toBe('basic');
+  });
 });

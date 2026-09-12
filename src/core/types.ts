@@ -82,6 +82,8 @@ export interface ClockComponent {
 /** 日历组件 */
 export interface CalendarComponent {
   show: boolean;
+  /** 样式 id（对应 src/ui/widgets/calendar/<style>/），如 basic / compact / minimal */
+  style: string;
   /** 周起始日 0=周日 1=周一 */
   week_start: 0 | 1;
   show_week_number: boolean;
@@ -97,6 +99,8 @@ export interface CalendarComponent {
 /** 日期组件（公历日期文本，支持 ISO 8601 占位符） */
 export interface DateComponent {
   show: boolean;
+  /** 样式 id（对应 src/ui/widgets/date/<style>/），如 basic / badge / stacked */
+  style: string;
   /** 日期格式模板，占位符 YYYY/YY/MM/M/DD/D/dddd/ddd */
   format: string;
   layout: ComponentLayout;
@@ -109,6 +113,8 @@ export interface DateComponent {
 /** 农历组件 */
 export interface LunarComponent {
   show: boolean;
+  /** 样式 id（对应 src/ui/widgets/lunar/<style>/），如 basic / pill / detail */
+  style: string;
   /** 格式模板，占位符 {lunar_month}{lunar_day}{ganzhi}{zodiac} */
   format: string;
   layout: ComponentLayout;
@@ -121,6 +127,8 @@ export interface LunarComponent {
 /** 天气组件 */
 export interface WeatherComponent {
   show: boolean;
+  /** 样式 id（对应 src/ui/widgets/weather/<style>/），如 basic / card / inline */
+  style: string;
   entity: string;
   layout: ComponentLayout;
   /** 自定义字体颜色 */
@@ -132,6 +140,8 @@ export interface WeatherComponent {
 /** 自定义文本（支持实体占位符 {entity_id}） */
 export interface TextComponent {
   content: string;
+  /** 样式 id（对应 src/ui/widgets/text/<style>/），如 basic / badge / quote */
+  style: string;
   layout: ComponentLayout;
   /** 是否显示（缺省视为显示，兼容旧配置）；关闭后屏保不渲染该项 */
   show?: boolean;
@@ -213,10 +223,10 @@ export const DEFAULT_CONFIG: SnoozeConfig = {
   conditions: {},
   components: {
     clock: { show: true, style: 'digital', hour24: true, seconds: false, layout: DEFAULT_LAYOUTS.clock },
-    calendar: { show: true, week_start: 1, show_week_number: false, format: 'M月D日 dddd', layout: DEFAULT_LAYOUTS.calendar },
-    date: { show: false, format: 'YYYY年MM月DD日 dddd', layout: DEFAULT_LAYOUTS.date },
-    lunar: { show: false, format: '{lunar_month}{lunar_day}', layout: DEFAULT_LAYOUTS.lunar },
-    weather: { show: false, entity: '', layout: DEFAULT_LAYOUTS.weather },
+    calendar: { show: true, style: 'basic', week_start: 1, show_week_number: false, format: 'M月D日 dddd', layout: DEFAULT_LAYOUTS.calendar },
+    date: { show: false, style: 'basic', format: 'YYYY年MM月DD日 dddd', layout: DEFAULT_LAYOUTS.date },
+    lunar: { show: false, style: 'basic', format: '{lunar_month}{lunar_day}', layout: DEFAULT_LAYOUTS.lunar },
+    weather: { show: false, style: 'basic', entity: '', layout: DEFAULT_LAYOUTS.weather },
     texts: [],
   },
   background: {

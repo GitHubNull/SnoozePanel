@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * 天气内容组件（内置）。
+ * 天气·基础天气（内置样式，沿用原单目录实现）。
  *
  * 从 options 读取 entity（weather.* 实体 id），读取 hass 中该实体的状态/温度/湿度。
  */
 import { computed } from 'vue';
-import type { WidgetProps } from '../types';
+import type { WidgetProps } from '@/ui/widgets/types';
 
 const props = defineProps<WidgetProps>();
 

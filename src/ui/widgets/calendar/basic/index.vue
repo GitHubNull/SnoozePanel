@@ -1,13 +1,12 @@
 <script setup lang="ts">
 /**
- * 日历内容组件（内置）。
+ * 日历·基础月历（内置样式，默认）。
  *
  * 从 options 读取：week_start（0=周日 1=周一）、show_week_number、format（日期标题模板）。
- * 第三方如需自定义，可在 widgets/thirdparty/calendar/ 放同 id 目录整体替换。
  */
 import { computed } from 'vue';
 import { buildCalendarGrid, weekdayHeaders, isoWeekNumber, formatDate } from '@/core/clock';
-import type { WidgetProps } from '../types';
+import type { WidgetProps } from '@/ui/widgets/types';
 
 const props = defineProps<WidgetProps>();
 

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * 自定义文本内容组件（内置）。
+ * 文本·基础文本（内置样式，沿用原单目录实现）。
  *
  * 从 options 读取 content（支持实体占位符 {entity_id} 或 {entity_id:unit}），
  * 通过 renderText 用 hass 当前状态替换后渲染。
  */
 import { computed } from 'vue';
 import { renderText } from '@/core/text';
-import type { WidgetProps } from '../types';
+import type { WidgetProps } from '@/ui/widgets/types';
 
 const props = defineProps<WidgetProps>();
 

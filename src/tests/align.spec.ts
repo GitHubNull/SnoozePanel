@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { alignDeltas, distributeDeltas, type Box } from '../core/align';
+import { alignDeltas, distributeDeltas, screenAlignDeltas, SCREEN_CENTER, type Box } from '../core/align';
 
 /** 便捷构造外接框（画布百分比） */
 function box(left: number, top: number, right: number, bottom: number): Box {
@@ -87,5 +87,36 @@ describe('distributeDeltas 平均分布', () => {
       { dx: 0, dy: 0 },
     ]);
     expect(distributeDeltas([], 'vertical')).toEqual([]);
+  });
+});
+
+describe('screenAlignDeltas 对齐到屏幕中心', () => {
+  it('center：外接框中心移到屏幕中心 (50,50)', () => {
+    // 单组件中心 (30,20) → 位移 (20,30)
+    expect(screenAlignDeltas([box(20, 10, 40, 30)], 'center')).toEqual({ dx: 20, dy: 30 });
+  });
+
+  it('hcenter：仅水平位移（dy=0）', () => {
+    expect(screenAlignDeltas([box(20, 10, 40, 30)], 'hcenter')).toEqual({ dx: 20, dy: 0 });
+  });
+
+  it('vcenter：仅垂直位移（dx=0）', () => {
+    expect(screenAlignDeltas([box(20, 10, 40, 30)], 'vcenter')).toEqual({ dx: 0, dy: 30 });
+  });
+
+  it('多组件按选区外接框中心整体位移', () => {
+    // A (10,10,20,20) B (30,40,50,60) → 外接框 (10,10,50,60) 中心 (30,35)
+    expect(screenAlignDeltas([box(10, 10, 20, 20), box(30, 40, 50, 60)], 'center')).toEqual({
+      dx: 20,
+      dy: 15,
+    });
+  });
+
+  it('空数组返回零位移', () => {
+    expect(screenAlignDeltas([], 'center')).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('屏幕中心基准为 50%', () => {
+    expect(SCREEN_CENTER).toBe(50);
   });
 });

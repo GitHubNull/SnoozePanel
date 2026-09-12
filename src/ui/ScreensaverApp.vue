@@ -103,6 +103,8 @@ interface PlacedComp {
   key: string;
   /** 内容组件类型 id：clock 走 faces 表盘，calendar/date/lunar/weather/text 走 widgets 注册表 */
   type: string;
+  /** 内容组件样式 id（走 widgets 注册表；clock 不使用） */
+  style?: string;
   layout: ComponentLayout;
   color?: string;
   /** 该组件配置（内置字段 + 第三方 options），供 widget 消费 */
@@ -124,6 +126,7 @@ const placedComponents = computed<PlacedComp[]>(() => {
     list.push({
       key: 'calendar',
       type: 'calendar',
+      style: c.calendar.style,
       layout: c.calendar.layout,
       color: c.calendar.color,
       options: {
@@ -138,6 +141,7 @@ const placedComponents = computed<PlacedComp[]>(() => {
     list.push({
       key: 'date',
       type: 'date',
+      style: c.date.style,
       layout: c.date.layout,
       color: c.date.color,
       options: { format: c.date.format, ...c.date.options },
@@ -147,6 +151,7 @@ const placedComponents = computed<PlacedComp[]>(() => {
     list.push({
       key: 'lunar',
       type: 'lunar',
+      style: c.lunar.style,
       layout: c.lunar.layout,
       color: c.lunar.color,
       options: { format: c.lunar.format, ...c.lunar.options },
@@ -156,6 +161,7 @@ const placedComponents = computed<PlacedComp[]>(() => {
     list.push({
       key: 'weather',
       type: 'weather',
+      style: c.weather.style,
       layout: c.weather.layout,
       color: c.weather.color,
       options: { entity: c.weather.entity, ...c.weather.options },
@@ -167,6 +173,7 @@ const placedComponents = computed<PlacedComp[]>(() => {
       list.push({
         key: `text_${i}`,
         type: 'text',
+        style: t.style,
         layout: t.layout,
         color: t.color,
         options: { content: t.content, ...t.options },
@@ -183,9 +190,9 @@ const renderComponents = computed<RenderedComp[]>(() =>
     .sort((a, b) => a.zIndex - b.zIndex),
 );
 
-/** 按类型解析内容组件入口（找不到回退默认组件） */
-function widgetComponent(type: string): Component {
-  return getWidget(type).component;
+/** 按类型+样式解析内容组件入口（style 缺省/未命中回退该类型默认样式） */
+function widgetComponent(type: string, style?: string): Component {
+  return getWidget(type, style).component;
 }
 
 function onLayoutUpdate(compKey: string, layout: ComponentLayout): void {
@@ -260,7 +267,7 @@ const themeVars = computed(() => ({
       />
       <!-- 内容组件：统一走 widgets 注册表动态挂载（calendar/date/lunar/weather/text） -->
       <component
-        :is="widgetComponent(item.type)"
+        :is="widgetComponent(item.type, item.style)"
         v-else
         :now="now"
         :hass="hass"

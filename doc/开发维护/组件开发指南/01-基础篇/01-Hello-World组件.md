@@ -10,15 +10,15 @@ SnoozePanel 屏保由若干「内容组件」拼成：时钟、日历、日期�
 - **时钟**是特殊的「表盘（face）」，走 `src/ui/faces/` 注册表；
 - **其余全部是内容组件（widget）**，走 `src/ui/widgets/` 注册表。
 
-本指南只讲 **widget**。widget 的契约极简：**一个目录 + 一个入口组件 `index.vue`，放入即生效**。
+本指南只讲 **widget**。widget 采用「类型 / 样式」两级目录：**在已有类型下放一个样式目录 + 一个入口组件 `index.vue`，放入即生效**。
 
 ## 二、最小组件：三行代码
 
-在 `src/ui/widgets/` 下新建目录 `hello/`，放入 `index.vue`：
+在某个类型目录下新建样式目录，如 `src/ui/widgets/text/hello/`，放入 `index.vue`：
 
 ```vue
 <script setup lang="ts">
-import type { WidgetProps } from '../types';
+import type { WidgetProps } from '../../types';
 const props = defineProps<WidgetProps>();
 </script>
 
@@ -33,11 +33,11 @@ const props = defineProps<WidgetProps>();
 
 就这样。没有注册代码要写——注册表在构建时自动扫描到它。
 
-> 注意：目录名 `hello` 就是组件 id。id 只能用小写字母、数字，建议用 `-` 连接（如 `my-clock`）。
+> 注意：路径中 `text` 是**类型**（与已有组件并列），`hello` 是**样式 id**。目录名只用小写字母、数字，建议用 `-` 连接（如 `my-style`）。
 
 ## 三、加上元数据：中文显示名
 
-`hello/widget.meta.ts`：
+`text/hello/widget.meta.ts`：
 
 ```ts
 /** 你好组件元数据 */
@@ -46,8 +46,8 @@ export default {
 };
 ```
 
-- `label` 缺省时显示目录名（`hello`），建议补一个中文名；
-- `id` 缺省取目录名，**通常不用写**，写了也必须与目录名一致。
+- `label` 缺省时显示样式目录名（`hello`），建议补一个中文名；
+- **类型与样式由目录路径决定**，无需在元数据里声明。
 
 ## 四、构建与验证
 
@@ -65,7 +65,7 @@ python -m http.server 8765
 # 浏览器打开 http://127.0.0.1:8765/dev/
 ```
 
-1. 打开编辑器 → 左侧分类区底部出现「你好」组件；
+1. 打开编辑器 → 选中 `text` 类组件 → 打开样式弹窗，可见新增的「你好」样式；
 2. 打开其显隐开关 → 画布与屏保出现「你好，现在是 X 点」；
 3. 拖动组件调整位置，确认与其它组件一致可拖拽/缩放。
 
@@ -73,7 +73,7 @@ python -m http.server 8765
 
 | 现象 | 原因 | 解法 |
 |---|---|---|
-| 组件不出现 | 目录没放对 / 入口不是 `index.vue` | 确认路径是 `src/ui/widgets/<id>/index.vue` |
+| 组件不出现 | 目录没放对 / 入口不是 `index.vue` | 确认路径是 `src/ui/widgets/<type>/<style>/index.vue` |
 | 组件渲染空白 | 模板没引用 `props.xxx` | `defineProps<WidgetProps>()` 后直接用 `props.now` |
 | 文字太大/太小 | 没用相对字号 | 用 `clamp(min, Xcqw, max)`，随屏幕缩放 |
 | 中文乱码 | 文件非 UTF-8 | 编辑器保存为 UTF-8 |

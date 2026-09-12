@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 日期内容组件（内置，全新独立组件）。
+ * 日期·基础日期（内置样式，默认）。
  *
  * 从 options 读取 format（ISO 8601 风格占位符模板）：
  *   YYYY 四位年 / YY 两位年 / MM 两位月 / M 月 / DD 两位日 / D 日 / dddd 星期全称 / ddd 星期简称。
@@ -8,7 +8,7 @@
  */
 import { computed } from 'vue';
 import { formatDate } from '@/core/clock';
-import type { WidgetProps } from '../types';
+import type { WidgetProps } from '@/ui/widgets/types';
 
 const props = defineProps<WidgetProps>();
 

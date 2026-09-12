@@ -1,9 +1,12 @@
 /**
- * 内容组件（widget）公共类型：所有内容组件入口（widgets/<id>/index.vue）接收的统一 props。
+ * 内容组件（widget）公共类型。
  *
- * 内容组件据此渲染：时间/实体/主题/自定义选项。
+ * 两级模型：类型（type：calendar/date/lunar/weather/text）+ 样式（style：每种类型多款）。
+ * 目录约定：widgets/<type>/<style>/index.vue（内置）、widgets/thirdparty/<type>/<style>/index.vue（第三方）。
+ * 所有样式入口（index.vue）接收统一 props WidgetProps。
+ *
  *   - now / hass / theme 为运行环境注入的只读上下文；
- *   - options 为该组件的配置透传位（内置字段 + 第三方自定义字段合并），
+ *   - options 为该组件类型配置的透传位（内置字段 + 第三方自定义字段合并），
  *     组件应在此读取自己关心的键（如 format / entity / content / week_start）。
  *   - color 为可选自定义字体颜色（缺省使用主题色）。
  *
@@ -31,11 +34,13 @@ export interface WidgetProps {
 /** 内容组件来源：系统内置 / 第三方安装 */
 export type WidgetSource = 'builtin' | 'thirdparty';
 
-/** 内容组件元数据 + 入口组件 */
-export interface WidgetMeta {
-  /** 组件类型唯一 id（目录名）：calendar / date / lunar / weather / text */
-  id: string;
-  /** 中文显示名（编辑器下拉用） */
+/** 内容组件样式元数据 + 入口组件 */
+export interface WidgetStyleMeta {
+  /** 组件类型 id：calendar / date / lunar / weather / text */
+  type: string;
+  /** 样式 id（目录名，与类型内唯一）：basic / compact / ... */
+  style: string;
+  /** 中文显示名（编辑器弹窗卡片用） */
   label: string;
   /** 来源：builtin（系统内置）/ thirdparty（第三方安装） */
   source: WidgetSource;
@@ -43,10 +48,12 @@ export interface WidgetMeta {
   component: Component;
 }
 
-/** 纯数据形态的内容组件摘要（不含组件引用，可安全跨序列化边界传递） */
-export interface WidgetOption {
-  /** 组件类型唯一 id（目录名） */
-  id: string;
+/** 纯数据形态的内容组件样式摘要（不含组件引用，可安全跨序列化边界传递） */
+export interface WidgetStyleOption {
+  /** 组件类型 id */
+  type: string;
+  /** 样式 id */
+  style: string;
   /** 中文显示名 */
   label: string;
   /** 来源：builtin / thirdparty */

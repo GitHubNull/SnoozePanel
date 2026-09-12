@@ -3,10 +3,18 @@
  *
  * 量测口径与拖拽/缩放一致：在画布内按 [data-comp-key] .component-content 取可见内容盒，
  * 换算为画布百分比外接框，交给 alignDeltas/distributeDeltas 求中心位移，再夹取写回 layout.x/y。
- * 约束：对齐需 ≥2 选中，分布需 ≥3 选中。
+ * 约束：选区基准对齐需 ≥2 选中，分布需 ≥3 选中；对齐到屏幕需 ≥1 选中。
  */
 import { computed, type ComputedRef } from 'vue';
-import { alignDeltas, distributeDeltas, type AlignKind, type DistributeAxis, type Box } from '@/core/align';
+import {
+  alignDeltas,
+  distributeDeltas,
+  screenAlignDeltas,
+  type AlignKind,
+  type DistributeAxis,
+  type ScreenAlignKind,
+  type Box,
+} from '@/core/align';
 import type { ComponentSelection } from './useComponentSelection';
 
 /** 对齐 / 分布动作组合式函数返回值 */
@@ -15,10 +23,14 @@ export interface AlignmentActions {
   canAlign: ComputedRef<boolean>;
   /** 是否可执行分布（≥3 选中） */
   canDistribute: ComputedRef<boolean>;
-  /** 按对齐方式对齐选中组件 */
+  /** 是否可执行对齐到屏幕（≥1 选中） */
+  canAlignToScreen: ComputedRef<boolean>;
+  /** 按对齐方式对齐选中组件（选区基准） */
   align: (kind: AlignKind) => void;
   /** 按轴向平均分布选中组件 */
   distribute: (axis: DistributeAxis) => void;
+  /** 把选中组件整体对齐到屏幕中心 */
+  alignToScreen: (kind: ScreenAlignKind) => void;
 }
 
 const clampPos = (v: number): number => Math.min(100, Math.max(0, v));
@@ -29,6 +41,7 @@ export function useAlignmentActions(
 ): AlignmentActions {
   const canAlign = computed(() => selection.selectedKeys.value.length >= 2);
   const canDistribute = computed(() => selection.selectedKeys.value.length >= 3);
+  const canAlignToScreen = computed(() => selection.selectedKeys.value.length >= 1);
 
   /** 在画布内按可见内容盒量测选中组件的外接框（画布百分比） */
   function measure(keys: string[]): { key: string; box: Box }[] {
@@ -84,5 +97,14 @@ export function useAlignmentActions(
     applyDeltas(measured, distributeDeltas(measured.map((m) => m.box), axis));
   }
 
-  return { canAlign, canDistribute, align, distribute };
+  /** 把选中组件整体对齐到屏幕中心（选区外接框中心 → 屏幕中心，各组件同步平移） */
+  function alignToScreen(kind: ScreenAlignKind): void {
+    if (!canAlignToScreen.value) return;
+    const measured = measure(selection.selectedKeys.value);
+    if (measured.length === 0) return;
+    const delta = screenAlignDeltas(measured.map((m) => m.box), kind);
+    applyDeltas(measured, measured.map(() => delta));
+  }
+
+  return { canAlign, canDistribute, canAlignToScreen, align, distribute, alignToScreen };
 }
