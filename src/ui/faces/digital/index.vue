@@ -28,11 +28,11 @@ const time = computed(() => formatClock(props.now, props.hour24, props.seconds))
   line-height: 1;
 }
 .time {
-  font-size: clamp(64px, 16vw, 220px);
+  font-size: clamp(64px, 16cqw, 220px);
   letter-spacing: 0.02em;
 }
 .period {
-  font-size: clamp(20px, 4vw, 48px);
+  font-size: clamp(20px, 4cqw, 48px);
   opacity: 0.7;
 }
 </style>

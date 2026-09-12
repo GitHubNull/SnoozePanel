@@ -61,8 +61,8 @@ const marks = Array.from({ length: 12 }, (_, i) => ({
 
 <style scoped>
 .face-minimal {
-  width: clamp(180px, 36vmin, 360px);
-  height: clamp(180px, 36vmin, 360px);
+  width: clamp(180px, 36cqmin, 360px);
+  height: clamp(180px, 36cqmin, 360px);
 }
 svg { width: 100%; height: 100%; display: block; }
 .rim { fill: none; stroke-width: 1; opacity: 0.35; }

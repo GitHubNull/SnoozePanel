@@ -63,8 +63,8 @@ const orbitTicks = Array.from({ length: 60 }, (_, i) => ({
 
 <style scoped>
 .face-orbit {
-  width: clamp(190px, 38vmin, 380px);
-  height: clamp(190px, 38vmin, 380px);
+  width: clamp(190px, 38cqmin, 380px);
+  height: clamp(190px, 38cqmin, 380px);
 }
 svg { width: 100%; height: 100%; display: block; }
 .ring { fill: none; }

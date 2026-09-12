@@ -28,12 +28,33 @@ export interface GridState {
   step: number;
 }
 
+/** 画布工具条停靠边 */
+export type ToolbarEdge = 'top' | 'right' | 'bottom' | 'left';
+/** 画布工具条排列方向 */
+export type ToolbarOrientation = 'horizontal' | 'vertical';
+
+/** 画布工具条停靠边 / 排列方向 / 收起态 */
+export interface ToolbarState {
+  edge: ToolbarEdge;
+  orientation: ToolbarOrientation;
+  collapsed: boolean;
+}
+
+/** 预览缩放适配偏好（fit=自动适配；percent=固定百分比） */
+export interface ZoomState {
+  mode: 'fit' | 'percent';
+  /** 固定缩放百分比（仅 mode='percent' 时生效） */
+  percent: number;
+}
+
 /** 编辑器 UI 偏好全量 */
 export interface EditorLayoutState {
   menuCollapsed: boolean;
   cats: PanelState;
   props: PanelState;
   grid: GridState;
+  toolbar: ToolbarState;
+  zoom: ZoomState;
 }
 
 /** localStorage 键（仅 UI 偏好） */
@@ -45,6 +66,9 @@ export const DEFAULT_EDITOR_LAYOUT: EditorLayoutState = {
   cats: { w: 260, collapsed: false },
   props: { w: 340, collapsed: false },
   grid: { show: true, snap: true, step: 5 },
+  // 工具条默认收起、停靠顶部、水平排列
+  toolbar: { edge: 'top', orientation: 'horizontal', collapsed: true },
+  zoom: { mode: 'fit', percent: 100 },
 };
 
 /** 面板宽度约束（px） */
@@ -61,6 +85,12 @@ export const RAIL_WIDTH = 36;
 export const GRID_STEP_LIMITS = { min: 1, max: 20 };
 /** 网格尺寸预设档位（百分比） */
 export const GRID_STEP_PRESETS = [1, 2, 5, 10];
+/** 缩放预设档位（百分比，类 Chrome 缩放档） */
+export const ZOOM_PRESETS = [25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400];
+/** 缩放可调范围（百分比）：严格大于 0 且小于 500（即不放大到 5 倍） */
+export const ZOOM_LIMITS = { min: 10, max: 400 };
+/** 默认缩放百分比（自定义档的兜底） */
+export const DEFAULT_ZOOM_PERCENT = 100;
 /** 窄宿主阈值（px）：内容宽低于此值时自动收起左右面板 */
 export const NARROW_HOST_WIDTH = 900;
 
@@ -69,6 +99,23 @@ export function clampNum(value: unknown, min: number, max: number, fallback: num
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * 缩放百分比收敛：非法值回退默认，合法值裁剪到 [min, max]。
+ * 硬约束：结果恒 >0 且 <500（不允许缩放到 0/负数，也不允许放大到 5 倍及以上）。
+ */
+export function clampZoomPercent(value: unknown): number {
+  return clampNum(value, ZOOM_LIMITS.min, ZOOM_LIMITS.max, DEFAULT_ZOOM_PERCENT);
+}
+
+/** 校验并读取工具条停靠边（非法值回退） */
+function readEdge(v: unknown, fallback: ToolbarEdge): ToolbarEdge {
+  return v === 'top' || v === 'right' || v === 'bottom' || v === 'left' ? v : fallback;
+}
+/** 校验并读取工具条排列方向（非法值回退） */
+function readOrientation(v: unknown, fallback: ToolbarOrientation): ToolbarOrientation {
+  return v === 'horizontal' || v === 'vertical' ? v : fallback;
 }
 
 /** 深拷贝默认值（避免调用方修改默认常量） */
@@ -99,6 +146,16 @@ function loadLayout(): EditorLayoutState {
         show: parsed.grid?.show !== false,
         snap: parsed.grid?.snap !== false,
         step: clampNum(parsed.grid?.step, GRID_STEP_LIMITS.min, GRID_STEP_LIMITS.max, fallback.grid.step),
+      },
+      toolbar: {
+        edge: readEdge(parsed.toolbar?.edge, fallback.toolbar.edge),
+        orientation: readOrientation(parsed.toolbar?.orientation, fallback.toolbar.orientation),
+        // 默认收起：缺省视为收起，仅在显式 false 时展开
+        collapsed: parsed.toolbar?.collapsed !== false,
+      },
+      zoom: {
+        mode: parsed.zoom?.mode === 'percent' ? 'percent' : 'fit',
+        percent: clampZoomPercent(parsed.zoom?.percent),
       },
     };
   } catch {

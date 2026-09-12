@@ -195,4 +195,46 @@ describe('normalizeConfig 配置规范化', () => {
   it('clock.style 去除首尾空白', () => {
     expect(normalizeConfig({ components: { clock: { style: '  chrono  ' } } }).components.clock.style).toBe('chrono');
   });
+
+  it('screen 缺省取默认尺寸', () => {
+    expect(normalizeConfig({}).screen).toEqual(DEFAULT_CONFIG.screen);
+    expect(normalizeConfig({ screen: null }).screen).toEqual(DEFAULT_CONFIG.screen);
+    expect(normalizeConfig({ screen: 'watch-360' }).screen).toEqual(DEFAULT_CONFIG.screen);
+  });
+
+  it('screen 合法 preset + 宽高透传', () => {
+    const c = normalizeConfig({ screen: { preset: 'watch-360', width: 360, height: 360 } });
+    expect(c.screen).toEqual({ preset: 'watch-360', width: 360, height: 360 });
+  });
+
+  it('screen 宽高按实际命中回正 preset', () => {
+    // 声明 preset 与宽高不符时，以宽高为准（命中预设即回正，否则自定义）
+    expect(normalizeConfig({ screen: { preset: 'watch-360', width: 800, height: 600 } }).screen).toEqual({
+      preset: 'custom',
+      width: 800,
+      height: 600,
+    });
+    expect(normalizeConfig({ screen: { preset: 'custom', width: 390, height: 844 } }).screen.preset).toBe('phone-390');
+  });
+
+  it('screen 宽高夹取到 [120,4096]', () => {
+    expect(normalizeConfig({ screen: { width: 10, height: 99999 } }).screen).toEqual({
+      preset: 'custom',
+      width: 120,
+      height: 4096,
+    });
+  });
+
+  it('screen 仅给 preset 时回填预设宽高', () => {
+    expect(normalizeConfig({ screen: { preset: 'phone-390' } }).screen).toEqual({
+      preset: 'phone-390',
+      width: 390,
+      height: 844,
+    });
+  });
+
+  it('screen 非法 preset 且无宽高回退默认', () => {
+    expect(normalizeConfig({ screen: { preset: 'nope' } }).screen).toEqual(DEFAULT_CONFIG.screen);
+    expect(normalizeConfig({ screen: { width: 'x', height: 'y' } }).screen).toEqual(DEFAULT_CONFIG.screen);
+  });
 });

@@ -48,8 +48,8 @@ const ticks = Array.from({ length: 12 }, (_, i) => i * 30);
 
 <style scoped>
 .clock-analog {
-  width: clamp(160px, 32vmin, 320px);
-  height: clamp(160px, 32vmin, 320px);
+  width: clamp(160px, 32cqmin, 320px);
+  height: clamp(160px, 32cqmin, 320px);
 }
 svg {
   width: 100%;

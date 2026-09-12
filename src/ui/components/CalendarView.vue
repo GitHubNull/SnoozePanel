@@ -44,7 +44,7 @@ const title = computed(() => formatDate(props.now, props.format));
 
 <style scoped>
 .calendar {
-  font-size: clamp(14px, 1.8vw, 24px);
+  font-size: clamp(14px, 1.8cqw, 24px);
 }
 .cal-title {
   margin-bottom: 0.6em;

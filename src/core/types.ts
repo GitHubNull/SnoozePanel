@@ -8,6 +8,8 @@
  * 无九宫格/绝对坐标旧类型，无向后兼容代码。
  */
 
+import { DEFAULT_SCREEN, type ScreenSize } from './screen';
+
 /** 组件自由布局（百分比坐标 + 尺寸） */
 export interface ComponentLayout {
   /** 距左百分比 0-100 */
@@ -153,6 +155,8 @@ export interface SnoozeConfig {
   /** 单组件显隐 JS 表达式 */
   component_templates: Record<string, string>;
   theme: 'midnight' | 'paper';
+  /** 编辑器模拟设备的屏幕尺寸（仅影响预览，生产屏保始终全屏） */
+  screen: ScreenSize;
 }
 
 /** 默认布局：各组件的初始位置与尺寸（w 同时作为内容缩放的「1x」基准宽度） */
@@ -201,4 +205,5 @@ export const DEFAULT_CONFIG: SnoozeConfig = {
   display_template: null,
   component_templates: {},
   theme: 'midnight',
+  screen: DEFAULT_SCREEN,
 };

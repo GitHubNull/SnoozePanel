@@ -16,7 +16,7 @@ const text = computed(() => formatLunar(props.now, props.format));
 
 <style scoped>
 .lunar {
-  font-size: clamp(16px, 2.2vw, 32px);
+  font-size: clamp(16px, 2.2cqw, 32px);
   opacity: 0.85;
   letter-spacing: 0.05em;
 }

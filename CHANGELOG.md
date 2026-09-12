@@ -4,6 +4,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.7.0] - 2026-09-12 22:44:54
+
+### Added
+- 编辑器设备模拟面板（`DevicePreview.vue` / `runtime/devicePreview.ts`）：按目标设备尺寸（模拟视口）渲染屏保再等比缩放适配，语义等价 Chrome DevTools 设备模拟——屏幕区布局尺寸恒为目标设备 CSS px，屏保根 `container-type: size` 使 `cqmin/cqw` 按设备视口解析（与真机逐像素一致），缩放仅作用于视觉（transform），编辑态拖拽/缩放数学自洽
+- 机身外框：屏幕四周包裹金属边框模拟真机平放桌面的俯视效果，边框厚度/圆角随形态（手表/手机/平板）变化
+- 屏幕尺寸预设（`core/screen.ts`）：方形手表 360/454、全面屏手机 390/430、平板 1024×768/1280×800 + 自定义宽高（夹取 120–4096 px）；`ScreenSize` 随 `SnoozeConfig` 持久化（生产屏保始终全屏，仅影响预览）
+- 画布浮动工具条（`CanvasToolbar.vue`）：网格 / 屏幕尺寸 / 缩放适配三组控件，支持停靠四边（拖动就近吸附）、水平/垂直排列、可收起（默认收起）
+- 缩放适配：fit 自动适配 + 固定百分比（16 档预设，类 Chrome 缩放；硬约束 >0 且 <500）；停靠/排列/收起/缩放档均为 UI 偏好持久化
+- 测试：新增 `screen.spec.ts`（预设匹配/夹取/自洽解析）与 `zoom.spec.ts`；`config.spec.ts` 新增 screen 规范化用例
+- 补充（随本版本发布）：仓库新增 `LICENSE`（MIT 协议）与 `DISCLAIMER.md`（法律免责声明）
+
+### Changed
+- 全量容器查询单位迁移：7 款表盘与 5 个组件的 `vw/vmin` 改为 `cqw/cqmin`，`ScreensaverApp` / `FacePreview` 舞台加 `container-type: size`——生产全屏下 `cqmin === vmin` 观感不变，编辑器内按设备视口真实解析
+- `EditorCanvas.vue` 重构：内联配置条迁移为 CanvasToolbar + DevicePreview 组合；屏幕尺寸写入草稿（随配置持久化），缩放档位来自 UI 偏好
+- `useEditorLayout` 新增 toolbar / zoom 偏好（停靠边/排列方向/收起态/缩放档）与 `clampZoomPercent` 硬约束
+- `CategoryPanel` 选中态样式修复：实心蓝底 + 高光滤镜会把开关冲成纯白 → 浅色底 + 内描边 + 加粗
+- README：新增「编辑器设备模拟面板」截图（平板/手机/手表三机型）与画布预览说明
+
 ## [0.6.0] - 2026-09-12 21:26:33
 
 ### Added

@@ -2,7 +2,7 @@
 /**
  * 表盘缩略预览：把「全屏舞台」整体缩放后放进任意尺寸的容器。
  *
- * 原理：所有表盘尺寸均使用 vmin / vw + clamp 视口单位，全屏渲染结果只取决于窗口尺寸。
+ * 原理：所有表盘尺寸均使用 cqmin / cqw + clamp 容器单位，解析基准为其容器（.stage）。
  * 这里在 100vw×100vh 的舞台内按全屏方式完整渲染（与真实屏保逐像素一致），
  * 再对整个舞台施加 transform: scale 使其恰好 contain 进容器并居中。
  * 因此任意新增表盘无需任何适配即可获得预览能力。
@@ -141,6 +141,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 尺寸容器：舞台即「视口参照」，表盘 cqmin/cqw 在此解析（100vw×100vh 下 cqmin === vmin）；
+     舞台尺寸恰为窗口尺寸，故与生产全屏逐一像素一致。 */
+  container-type: size;
   /* transform（translate + scale）由脚本注入 */
 }
 </style>

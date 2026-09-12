@@ -46,8 +46,8 @@ const dashOffset = computed(() => CIRC * (1 - progress.value));
 <style scoped>
 .face-ring {
   position: relative;
-  width: clamp(200px, 40vmin, 400px);
-  height: clamp(200px, 40vmin, 400px);
+  width: clamp(200px, 40cqmin, 400px);
+  height: clamp(200px, 40cqmin, 400px);
 }
 svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .track { fill: none; stroke-width: 3; opacity: 0.18; }
@@ -67,6 +67,6 @@ svg { position: absolute; inset: 0; width: 100%; height: 100%; }
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.time { font-size: clamp(40px, 9vmin, 92px); letter-spacing: 0.02em; }
-.period { font-size: clamp(16px, 3vmin, 30px); opacity: 0.7; align-self: flex-end; padding-bottom: 0.6em; }
+.time { font-size: clamp(40px, 9cqmin, 92px); letter-spacing: 0.02em; }
+.period { font-size: clamp(16px, 3cqmin, 30px); opacity: 0.7; align-self: flex-end; padding-bottom: 0.6em; }
 </style>

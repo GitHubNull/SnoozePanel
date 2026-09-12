@@ -162,12 +162,12 @@ function onResizeStart(ev: PointerEvent): void {
 .component-item:hover {
   background: var(--card-background-color, #f5f5f5);
 }
+/* 选中态：浅色主题底 + 内描边表达选中，避免实心底 + 高光滤镜把开关冲成纯白而看不清 on/off */
 .component-item.active {
-  background: var(--primary-color, #5ea0ff);
-  color: #fff;
-}
-.component-item.active :deep(.p-toggleswitch) {
-  filter: brightness(10);
+  background: color-mix(in srgb, var(--primary-color, #5ea0ff) 16%, transparent);
+  color: var(--primary-text-color, #1c1c1c);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1.5px var(--primary-color, #5ea0ff);
 }
 .component-name {
   font-size: 14px;

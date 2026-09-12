@@ -240,6 +240,10 @@ const themeVars = computed(() => ({
   z-index: 9999;
   overflow: hidden;
   transition: opacity 0.4s ease;
+  /* 设备模拟视口：建立尺寸容器，供组件/表盘的 cqmin/cqw 解析。
+     生产全屏（inset:0）下 cqmin === vmin，观感与旧版逐像素一致；
+     编辑器内由 DevicePreview 把本元素约束到目标设备尺寸，实现真机级缩放。 */
+  container-type: size;
 }
 .snoozepanel.edit-mode {
   position: relative;

@@ -14,6 +14,7 @@ import {
   type EntityCondition,
   type Weekday,
 } from './types';
+import { resolveScreen, type ScreenSize } from './screen';
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -86,6 +87,15 @@ function normalizeColor(v: unknown): string | undefined {
   if (/^rgba?\(/.test(colored)) return colored;
   if (/^[a-zA-Z]+$/.test(colored)) return colored;
   return undefined;
+}
+
+/**
+ * 规范化屏幕尺寸（设备模拟用）。
+ * 非对象回退默认；preset 与宽高交由 resolveScreen 解析为自洽结果（宽高夹取、preset 校正）。
+ */
+function normalizeScreen(v: unknown): ScreenSize {
+  if (!isObject(v)) return { ...DEFAULT_CONFIG.screen };
+  return resolveScreen(v.preset, v.width, v.height);
 }
 
 function normalizeDevices(v: unknown): DeviceFilter | null {
@@ -235,5 +245,6 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
     display_template: strOrNull(raw.display_template),
     component_templates: componentTemplates,
     theme,
+    screen: normalizeScreen(raw.screen),
   };
 }

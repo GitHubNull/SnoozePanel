@@ -15,7 +15,9 @@ import { registerSnoozePanelSidebar } from './sidebar/sidebar';
 import { registerSnoozeIconSet } from './runtime/iconset';
 import { listFaceOptions, type FaceOption } from './ui/faces/registry';
 import { mountFacePreview, type FacePreviewHandle, type FacePreviewOptions } from './runtime/preview';
+import { mountDevicePreview, type DevicePreviewHandle } from './runtime/devicePreview';
 import type { SnoozeConfig } from './core/types';
+import type { ScreenSize } from './core/screen';
 import type { HassLike } from './core/hass';
 
 registerSnoozePanel();
@@ -45,6 +47,8 @@ interface SnoozePanelTestApi {
   mountFacePreview(host: HTMLElement, faceId: string, opts?: FacePreviewOptions): FacePreviewHandle;
   /** 在宿主元素内挂载完整配置编辑器（dev 页用，返回句柄用于读取配置 / 卸载） */
   mountEditor(host: HTMLElement, config: SnoozeConfig, hass: HassLike): EditorHandle;
+  /** 在宿主元素内挂载独立模拟设备面板（dev 页用，按目标尺寸渲染屏保并等比缩放适配） */
+  mountDevicePreview(host: HTMLElement, config: SnoozeConfig, screen: ScreenSize, hass?: HassLike): DevicePreviewHandle;
 }
 
 /** 编辑器挂载句柄（dev 页用） */
@@ -107,6 +111,7 @@ window.SnoozePanelTestApi = Object.freeze({
   listFaces: listFaceOptions,
   mountFacePreview,
   mountEditor,
+  mountDevicePreview,
 } satisfies SnoozePanelTestApi);
 
 console.info(

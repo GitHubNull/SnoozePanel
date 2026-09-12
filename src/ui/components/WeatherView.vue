@@ -52,7 +52,7 @@ const info = computed(() => {
   display: flex;
   align-items: baseline;
   gap: 0.6em;
-  font-size: clamp(18px, 2.4vw, 36px);
+  font-size: clamp(18px, 2.4cqw, 36px);
 }
 .temp { font-weight: 600; }
 .humidity { opacity: 0.6; font-size: 0.7em; }

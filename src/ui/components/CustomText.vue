@@ -17,7 +17,7 @@ const text = computed(() => renderText(props.content, props.hass));
 
 <style scoped>
 .custom-text {
-  font-size: clamp(16px, 2vw, 30px);
+  font-size: clamp(16px, 2cqw, 30px);
   opacity: 0.85;
 }
 </style>

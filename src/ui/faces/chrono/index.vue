@@ -186,8 +186,8 @@ const dialRings = Array.from({ length: 13 }, (_, i) => 24 + i * 5);
 
 <style scoped>
 .face-chrono {
-  width: clamp(240px, 52vmin, 520px);
-  height: clamp(240px, 52vmin, 520px);
+  width: clamp(240px, 52cqmin, 520px);
+  height: clamp(240px, 52cqmin, 520px);
 }
 svg { width: 100%; height: 100%; display: block; }
 </style>
