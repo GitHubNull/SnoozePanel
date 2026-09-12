@@ -6,8 +6,8 @@ const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', 
 const WEEKDAY_CN_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
 
 /**
- * 日期格式模板渲染。支持占位符：
- *   YYYY 年  M 月(无前导零)  MM 月(两位)  D 日  DD 日(两位)
+ * 日期格式模板渲染。支持占位符（先长后短替换）：
+ *   YYYY 年(四位)  YY 年(两位)  M 月(无前导零)  MM 月(两位)  D 日  DD 日(两位)
  *   dddd 星期全称(周日)  ddd 星期简称(日)
  */
 export function formatDate(date: Date, format: string): string {
@@ -17,6 +17,7 @@ export function formatDate(date: Date, format: string): string {
   const wd = date.getDay();
   return format
     .replace(/YYYY/g, String(y))
+    .replace(/YY/g, String(y).slice(-2).padStart(2, '0'))
     .replace(/MM/g, String(m).padStart(2, '0'))
     .replace(/M/g, String(m))
     .replace(/DD/g, String(d).padStart(2, '0'))

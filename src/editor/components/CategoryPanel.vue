@@ -17,10 +17,10 @@ interface ComponentListItem {
 }
 
 defineProps<{
-  /** 组件分类清单（四类固定组件 + 每条自定义文本各成一项） */
+  /** 组件分类清单（五类固定组件 + 每条自定义文本各成一项） */
   components: ComponentListItem[];
-  /** 当前选中组件 key */
-  selected: string;
+  /** 当前选中的全部组件 key（支持多选高亮） */
+  selectedKeys: string[];
   /** 是否收起（滑轨态） */
   collapsed: boolean;
   /** 展开态宽度（px） */
@@ -28,7 +28,7 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', key: string): void;
+  (e: 'select', key: string, additive: boolean): void;
   (e: 'toggle-show', key: string, value: boolean): void;
   (e: 'add-text'): void;
   (e: 'toggle-panel'): void;
@@ -36,6 +36,10 @@ const emit = defineEmits<{
   (e: 'resize-start', ev: PointerEvent): void;
 }>();
 
+/** 点击组件项：Ctrl/Cmd/Shift 按下时为增量多选 */
+function onSelect(key: string, ev: MouseEvent): void {
+  emit('select', key, ev.ctrlKey || ev.metaKey || ev.shiftKey);
+}
 function onToggleShow(key: string, value: boolean): void {
   emit('toggle-show', key, value);
 }
@@ -85,8 +89,8 @@ function onResizeStart(ev: PointerEvent): void {
             v-for="comp in components"
             :key="comp.key"
             class="component-item"
-            :class="{ active: selected === comp.key }"
-            @click="emit('select', comp.key)"
+            :class="{ active: selectedKeys.includes(comp.key) }"
+            @click="onSelect(comp.key, $event)"
           >
             <ToggleSwitch
               :model-value="comp.show"

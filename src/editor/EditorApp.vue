@@ -23,9 +23,13 @@ import { useEditorLayout, GRID_STEP_PRESETS, DEFAULT_EDITOR_LAYOUT, type PanelKe
 import { acquireChromeTheme, releaseChromeTheme } from './chromeTheme';
 import { useEditorDraft } from './composables/useEditorDraft';
 import { useComponentSelection } from './composables/useComponentSelection';
+import { useAlignmentActions } from './composables/useAlignmentActions';
+import { useLayerActions } from './composables/useLayerActions';
+import { useEditorShortcuts } from './composables/useEditorShortcuts';
 import { useDeviceSave } from './composables/useDeviceSave';
-import { EditorDraftKey, EditorLayoutKey, EditorSelectionKey } from './editorContext';
+import { EditorDraftKey, EditorLayoutKey, EditorSelectionKey, EditorActionsKey } from './editorContext';
 import EditorMenuBar from './components/EditorMenuBar.vue';
+import TopToolbar from './components/TopToolbar.vue';
 import CategoryPanel from './components/CategoryPanel.vue';
 import EditorCanvas from './components/EditorCanvas.vue';
 import PropertyPanel from './components/PropertyPanel.vue';
@@ -92,7 +96,7 @@ const { deviceSaving, deviceSaved, onSaveDevice } = useDeviceSave(props, deviceI
 const selection = useComponentSelection(draft);
 provide(EditorSelectionKey, selection);
 const {
-  selectedComponent,
+  selectedKeys,
   componentList,
   selectedLabel,
   setComponentShow,
@@ -100,6 +104,17 @@ const {
   onCanvasSelect,
   updateComponentLayout,
 } = selection;
+
+// ---- 顶部工具条动作（对齐 / 分布 / 图层） ----
+// 对齐量测需访问画布根节点（.snoozepanel.edit-mode），在此解析后注入动作 composable
+function getCanvasEl(): HTMLElement | null {
+  return document.querySelector('.snoozepanel.edit-mode');
+}
+const alignment = useAlignmentActions(selection, getCanvasEl);
+const layers = useLayerActions(selection);
+provide(EditorActionsKey, { alignment, layers });
+// 全局快捷键：Alt 系列对齐/分布、Ctrl+[ ] 系列图层（输入态自动屏蔽）
+useEditorShortcuts(alignment, layers);
 
 // ---- 天气实体候选（从 hass 中筛 weather.*） ----
 const weatherEntities = computed(() => {
@@ -211,12 +226,15 @@ onBeforeUnmount(() => {
       @save="onSaveDevice"
     />
 
+    <!-- ============ 2. 顶部工具条（对齐 / 图层，位于菜单栏与工作区之间） ============ -->
+    <TopToolbar />
+
     <!-- ============ 工作区：左分类 / 中画布 / 右属性 ============ -->
     <div ref="bodyEl" class="plugin-body">
       <!-- ---- 2. 组件分类选择区 ---- -->
       <CategoryPanel
         :components="componentList"
-        :selected="selectedComponent"
+        :selected-keys="selectedKeys"
         :collapsed="catsCollapsed"
         :width="catsWidth"
         @select="onCanvasSelect"
@@ -232,7 +250,7 @@ onBeforeUnmount(() => {
         :config="draft"
         :device-id="deviceId"
         :grid="canvasGrid"
-        :selected="selectedComponent"
+        :selected-keys="selectedKeys"
         :grid-step="gridStep"
         :grid-presets="GRID_PRESETS"
         @update:grid-step="gridStep = $event"

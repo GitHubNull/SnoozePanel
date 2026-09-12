@@ -20,8 +20,8 @@ defineProps<{
   deviceId: string;
   /** 画布网格只读快照（供 ScreensaverApp 的网格层与磁吸） */
   grid: { show: boolean; snap: boolean; step: number };
-  /** 当前选中组件 key */
-  selected: string;
+  /** 当前选中组件 key 列表（支持多选） */
+  selectedKeys: string[];
   /** 网格步长（%） */
   gridStep: number;
   /** 网格尺寸预设档位 */
@@ -37,14 +37,14 @@ const emit = defineEmits<{
   (e: 'update:gridStep', value: number): void;
   (e: 'reset-grid'): void;
   (e: 'update:layout', compKey: string, layout: ComponentLayout): void;
-  (e: 'select', compKey: string): void;
+  (e: 'select', compKey: string, additive: boolean): void;
 }>();
 
 function onLayoutUpdate(compKey: string, layout: ComponentLayout): void {
   emit('update:layout', compKey, layout);
 }
-function onSelect(compKey: string): void {
-  emit('select', compKey);
+function onSelect(compKey: string, additive: boolean): void {
+  emit('select', compKey, additive);
 }
 </script>
 
@@ -64,7 +64,7 @@ function onSelect(compKey: string): void {
       :device-id="deviceId"
       :screen="draft.screen"
       :grid="grid"
-      :selected="selected"
+      :selected-keys="selectedKeys"
       :zoom-mode="uiLayout.zoom.mode"
       :zoom-percent="uiLayout.zoom.percent"
       :rulers="uiLayout.ruler"

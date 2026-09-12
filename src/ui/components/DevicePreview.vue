@@ -31,8 +31,8 @@ const props = withDefaults(
     screen: ScreenSize;
     /** 画布网格只读快照（透传给 ScreensaverApp） */
     grid?: { show: boolean; snap: boolean; step: number };
-    /** 当前选中组件 key（编辑态） */
-    selected?: string;
+    /** 当前选中组件 key 列表（编辑态，支持多选） */
+    selectedKeys?: string[];
     /** 是否编辑态（透传给 ScreensaverApp） */
     editMode?: boolean;
     /** 受控缩放模式（提供即受控，编辑器路径由外层工具条驱动；缺省则用内部适配/1:1 切换） */
@@ -44,7 +44,7 @@ const props = withDefaults(
   }>(),
   {
     grid: () => ({ show: true, snap: true, step: 5 }),
-    selected: '',
+    selectedKeys: () => [],
     editMode: true,
     // 缺省即未受控：显式给出 undefined 默认值，触发内部适配/1:1 逻辑
     zoomMode: undefined,
@@ -56,7 +56,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'update:layout', compKey: string, layout: ComponentLayout): void;
-  (e: 'select', compKey: string): void;
+  (e: 'select', compKey: string, additive: boolean): void;
 }>();
 
 const stageEl = ref<HTMLElement | null>(null);
@@ -223,8 +223,8 @@ watch(mode, () => void nextTick(recompute));
 function onLayoutUpdate(compKey: string, layout: ComponentLayout): void {
   emit('update:layout', compKey, layout);
 }
-function onSelect(compKey: string): void {
-  emit('select', compKey);
+function onSelect(compKey: string, additive: boolean): void {
+  emit('select', compKey, additive);
 }
 /** 切换 适配 / 1:1（仅未受控时使用） */
 function toggleFit(): void {
@@ -245,7 +245,7 @@ function toggleFit(): void {
               :config="config"
               :device-id="deviceId"
               :grid="grid"
-              :selected="selected"
+              :selected-keys="selectedKeys"
               :edit-mode="editMode"
               @update:layout="onLayoutUpdate"
               @select="onSelect"

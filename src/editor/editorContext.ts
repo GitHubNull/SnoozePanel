@@ -12,6 +12,8 @@ import { inject, type InjectionKey } from 'vue';
 import type { SnoozeConfig } from '@/core/types';
 import type { EditorLayoutState } from './useEditorLayout';
 import type { ComponentSelection } from './composables/useComponentSelection';
+import type { AlignmentActions } from './composables/useAlignmentActions';
+import type { LayerActions } from './composables/useLayerActions';
 
 /** 编辑草稿（共享 reactive，编辑器内所有编辑的单一数据源） */
 export const EditorDraftKey: InjectionKey<SnoozeConfig> = Symbol('snooze-editor-draft');
@@ -19,6 +21,16 @@ export const EditorDraftKey: InjectionKey<SnoozeConfig> = Symbol('snooze-editor-
 export const EditorLayoutKey: InjectionKey<EditorLayoutState> = Symbol('snooze-editor-layout');
 /** 选中组件状态与派生数据（含 currentLayout / currentColor / 文本读写） */
 export const EditorSelectionKey: InjectionKey<ComponentSelection> = Symbol('snooze-editor-selection');
+/** 顶部工具条动作（对齐 / 分布 / 图层） */
+export const EditorActionsKey: InjectionKey<EditorActions> = Symbol('snooze-editor-actions');
+
+/** 顶部工具条聚合动作 */
+export interface EditorActions {
+  /** 对齐 / 分布动作 */
+  alignment: AlignmentActions;
+  /** 图层动作 */
+  layers: LayerActions;
+}
 
 /** 注入编辑草稿（未提供时抛错，显式暴露使用位置问题） */
 export function injectEditorDraft(): SnoozeConfig {
@@ -38,5 +50,12 @@ export function injectEditorLayout(): EditorLayoutState {
 export function injectEditorSelection(): ComponentSelection {
   const v = inject(EditorSelectionKey);
   if (!v) throw new Error('[SnoozePanel] 缺少编辑器选中上下文（需在 EditorApp 内使用）');
+  return v;
+}
+
+/** 注入顶部工具条动作（对齐 / 分布 / 图层） */
+export function injectEditorActions(): EditorActions {
+  const v = inject(EditorActionsKey);
+  if (!v) throw new Error('[SnoozePanel] 缺少编辑器动作上下文（需在 EditorApp 内使用）');
   return v;
 }

@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, inject, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, inject, onMounted, onBeforeUnmount, type Component } from 'vue';
 import { baseWidthFor, type SnoozeConfig, type ComponentLayout } from '@/core/types';
 import { getTheme } from './themes';
 import { evalTemplate } from '@/core/template';
 import type { HassLike } from '@/core/hass';
 import { getFace } from './faces/registry';
+import { getWidget } from './widgets/registry';
 import ComponentWrapper from './components/ComponentWrapper.vue';
-import CalendarView from './components/CalendarView.vue';
-import LunarView from './components/LunarView.vue';
-import WeatherView from './components/WeatherView.vue';
-import CustomText from './components/CustomText.vue';
 
 interface SnoozeState {
   now: Date;
@@ -24,19 +21,19 @@ const props = withDefaults(
     editMode?: boolean;
     /** 画布网格与磁吸附偏好（仅编辑态生效） */
     grid?: { show: boolean; snap: boolean; step: number };
-    /** 当前选中组件 key（仅编辑态生效，与编辑器左右面板共用） */
-    selected?: string;
+    /** 当前选中组件 key 列表（仅编辑态生效，与编辑器左右面板共用，支持多选） */
+    selectedKeys?: string[];
   }>(),
   {
     editMode: false,
     grid: () => ({ show: true, snap: true, step: 5 }),
-    selected: '',
+    selectedKeys: () => [],
   },
 );
 
 const emit = defineEmits<{
   (e: 'update:layout', compKey: string, layout: ComponentLayout): void;
-  (e: 'select', compKey: string): void;
+  (e: 'select', compKey: string, additive: boolean): void;
 }>();
 
 // 响应式 now / hass 由 mount 层通过 provide 注入
@@ -101,44 +98,103 @@ function compVisible(key: string, show: boolean): boolean {
   return evalTemplate(tpl, hass.value, true);
 }
 
-// ---- 组件清单（含布局与颜色） ----
+// ---- 组件清单（含类型 / 布局 / 颜色 / 选项） ----
 interface PlacedComp {
   key: string;
+  /** 内容组件类型 id：clock 走 faces 表盘，calendar/date/lunar/weather/text 走 widgets 注册表 */
+  type: string;
   layout: ComponentLayout;
   color?: string;
+  /** 该组件配置（内置字段 + 第三方 options），供 widget 消费 */
+  options: Record<string, unknown>;
+}
+
+/** 渲染项：在清单项基础上带上解析后的 zIndex（layout.z 缺省按清单顺序） */
+interface RenderedComp extends PlacedComp {
+  zIndex: number;
 }
 
 const placedComponents = computed<PlacedComp[]>(() => {
   const c = props.config.components;
   const list: PlacedComp[] = [];
   if (compVisible('clock', c.clock.show)) {
-    list.push({ key: 'clock', layout: c.clock.layout, color: c.clock.color });
+    list.push({ key: 'clock', type: 'clock', layout: c.clock.layout, color: c.clock.color, options: {} });
   }
   if (compVisible('calendar', c.calendar.show)) {
-    list.push({ key: 'calendar', layout: c.calendar.layout, color: c.calendar.color });
+    list.push({
+      key: 'calendar',
+      type: 'calendar',
+      layout: c.calendar.layout,
+      color: c.calendar.color,
+      options: {
+        week_start: c.calendar.week_start,
+        show_week_number: c.calendar.show_week_number,
+        format: c.calendar.format,
+        ...c.calendar.options,
+      },
+    });
+  }
+  if (compVisible('date', c.date.show)) {
+    list.push({
+      key: 'date',
+      type: 'date',
+      layout: c.date.layout,
+      color: c.date.color,
+      options: { format: c.date.format, ...c.date.options },
+    });
   }
   if (compVisible('lunar', c.lunar.show)) {
-    list.push({ key: 'lunar', layout: c.lunar.layout, color: c.lunar.color });
+    list.push({
+      key: 'lunar',
+      type: 'lunar',
+      layout: c.lunar.layout,
+      color: c.lunar.color,
+      options: { format: c.lunar.format, ...c.lunar.options },
+    });
   }
   if (compVisible('weather', c.weather.show && !!c.weather.entity)) {
-    list.push({ key: 'weather', layout: c.weather.layout, color: c.weather.color });
+    list.push({
+      key: 'weather',
+      type: 'weather',
+      layout: c.weather.layout,
+      color: c.weather.color,
+      options: { entity: c.weather.entity, ...c.weather.options },
+    });
   }
   c.texts.forEach((t, i) => {
     // 每条自定义文本可独立显隐（show 缺省视为显示）
     if (compVisible(`text_${i}`, t.show !== false)) {
-      list.push({ key: `text_${i}`, layout: t.layout, color: t.color });
+      list.push({
+        key: `text_${i}`,
+        type: 'text',
+        layout: t.layout,
+        color: t.color,
+        options: { content: t.content, ...t.options },
+      });
     }
   });
   return list;
 });
 
+/** 按 layout.z 升序渲染（z 缺省按清单顺序）；zIndex 传入 ComponentWrapper 控制堆叠 */
+const renderComponents = computed<RenderedComp[]>(() =>
+  placedComponents.value
+    .map((item, i) => ({ ...item, zIndex: item.layout.z ?? i }))
+    .sort((a, b) => a.zIndex - b.zIndex),
+);
+
+/** 按类型解析内容组件入口（找不到回退默认组件） */
+function widgetComponent(type: string): Component {
+  return getWidget(type).component;
+}
+
 function onLayoutUpdate(compKey: string, layout: ComponentLayout): void {
   emit('update:layout', compKey, layout);
 }
 
-/** 画布点选组件 → 透传给编辑器（与左右面板选中态联动） */
-function onSelect(compKey: string): void {
-  emit('select', compKey);
+/** 画布点选组件 → 透传给编辑器（additive=true 表示 Ctrl/Cmd/Shift 多选） */
+function onSelect(compKey: string, additive: boolean): void {
+  emit('select', compKey, additive);
 }
 
 // ---- 编辑态：网格叠加层与吸附参考线 ----
@@ -176,14 +232,15 @@ const themeVars = computed(() => ({
     <!-- 编辑态网格叠加层（仅 editMode 渲染，生产屏保不出现；pointer-events:none 不挡交互） -->
     <div v-if="editMode && grid.show" class="grid-layer" :style="gridStyle"></div>
 
-    <!-- 全部组件统一用 ComponentWrapper 渲染（自由布局 + 可选编辑态） -->
+    <!-- 全部组件统一用 ComponentWrapper 渲染（自由布局 + 可选编辑态）；按 layout.z 升序堆叠 -->
     <ComponentWrapper
-      v-for="item in placedComponents"
+      v-for="item in renderComponents"
       :key="item.key"
       :layout="item.layout"
       :color="item.color"
+      :z-index="item.zIndex"
       :editable="editMode"
-      :selected="editMode && selected === item.key"
+      :selected="editMode && selectedKeys.includes(item.key)"
       :snap="grid.snap"
       :grid-step="grid.step"
       :comp-key="item.key"
@@ -192,33 +249,24 @@ const themeVars = computed(() => ({
       @select="onSelect"
       @guide="onGuide"
     >
+      <!-- 时钟：仍走 faces 表盘注册表 -->
       <component
         :is="faceComponent"
-        v-if="item.key === 'clock'"
+        v-if="item.type === 'clock'"
         :now="now"
         :hour24="config.components.clock.hour24"
         :seconds="config.components.clock.seconds"
         :theme="clockTheme"
       />
-      <CalendarView
-        v-else-if="item.key === 'calendar'"
+      <!-- 内容组件：统一走 widgets 注册表动态挂载（calendar/date/lunar/weather/text） -->
+      <component
+        :is="widgetComponent(item.type)"
+        v-else
         :now="now"
-        :week-start="config.components.calendar.week_start"
-        :show-week-number="config.components.calendar.show_week_number"
-        :format="config.components.calendar.format"
-      />
-      <LunarView
-        v-else-if="item.key === 'lunar'"
-        :now="now" :format="config.components.lunar.format"
-      />
-      <WeatherView
-        v-else-if="item.key === 'weather'"
-        :hass="hass" :entity="config.components.weather.entity"
-      />
-      <CustomText
-        v-else-if="item.key.startsWith('text_')"
         :hass="hass"
-        :content="config.components.texts[Number(item.key.slice(5))].content"
+        :theme="theme"
+        :options="item.options"
+        :color="item.color"
       />
     </ComponentWrapper>
 

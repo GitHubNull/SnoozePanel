@@ -17,6 +17,13 @@ describe('formatDate 日期格式模板', () => {
   it('组合模板', () => {
     expect(formatDate(d, 'M月D日 dddd')).toBe('9月11日 周五');
   });
+
+  it('YY 两位年（先长后短替换，YYYY 优先）', () => {
+    expect(formatDate(d, 'YY')).toBe('26');
+    expect(formatDate(d, 'YY-MM-DD')).toBe('26-09-11');
+    // YYYY 需先于 YY 替换，避免出现 "2026" -> "2026" 被二次截断
+    expect(formatDate(d, 'YYYY/YY')).toBe('2026/26');
+  });
 });
 
 describe('isoWeekNumber ISO 周数', () => {

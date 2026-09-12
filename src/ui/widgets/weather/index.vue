@@ -1,11 +1,13 @@
 <script setup lang="ts">
+/**
+ * 天气内容组件（内置）。
+ *
+ * 从 options 读取 entity（weather.* 实体 id），读取 hass 中该实体的状态/温度/湿度。
+ */
 import { computed } from 'vue';
-import type { HassLike } from '@/core/hass';
+import type { WidgetProps } from '../types';
 
-const props = defineProps<{
-  hass: HassLike;
-  entity: string;
-}>();
+const props = defineProps<WidgetProps>();
 
 const CONDITION_CN: Record<string, string> = {
   'clear-night': '晴夜',
@@ -25,8 +27,12 @@ const CONDITION_CN: Record<string, string> = {
   'windy-variant': '大风',
 };
 
+const entity = computed<string>(() =>
+  typeof props.options.entity === 'string' ? props.options.entity : '',
+);
+
 const info = computed(() => {
-  const s = props.hass.states[props.entity];
+  const s = props.hass.states[entity.value];
   if (!s) return null;
   const temp = s.attributes.temperature;
   const cond = CONDITION_CN[s.state] ?? s.state;

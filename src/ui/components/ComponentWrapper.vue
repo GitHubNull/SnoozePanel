@@ -34,6 +34,8 @@ const props = withDefaults(
     compKey?: string;
     /** 内容缩放的「1x」基准宽度（%）：布局宽 w 与之的比值即缩放比 */
     baseWidth?: number;
+    /** 图层序（写入 z-index；缺省不设置） */
+    zIndex?: number;
   }>(),
   {
     editable: false,
@@ -43,13 +45,14 @@ const props = withDefaults(
     color: undefined,
     compKey: '',
     baseWidth: 50,
+    zIndex: undefined,
   },
 );
 
 const emit = defineEmits<{
   (e: 'update:layout', layout: ComponentLayout): void;
-  /** 编辑态点选组件 */
-  (e: 'select', compKey: string): void;
+  /** 编辑态点选组件；additive=true 表示 Ctrl/Cmd/Shift 多选（切换选中） */
+  (e: 'select', compKey: string, additive: boolean): void;
   /** 吸附参考线：x 为纵向线位置（%），y 为横向线位置（%）；null 表示不显示 */
   (e: 'guide', guide: { x: number | null; y: number | null }): void;
 }>();
@@ -83,6 +86,9 @@ const wrapperStyle = computed(() => {
   }
   if (props.color) {
     style.color = props.color;
+  }
+  if (props.zIndex !== undefined) {
+    style.zIndex = String(props.zIndex);
   }
   return style;
 });
@@ -217,8 +223,11 @@ function setupDrag(): void {
 
   if (!selectListener) {
     // 编辑态点选：pointerdown 即选中（缩放手柄的 pointerdown 已 stopPropagation，不会误触）
-    selectListener = () => {
-      if (props.compKey) emit('select', props.compKey);
+    // Ctrl / Cmd / Shift 按下时为「增量多选」，交由上层在切换/替换选中间抉择
+    selectListener = (ev: PointerEvent) => {
+      if (props.compKey) {
+        emit('select', props.compKey, ev.ctrlKey || ev.metaKey || ev.shiftKey);
+      }
     };
     root.value.addEventListener('pointerdown', selectListener);
   }

@@ -1,8 +1,10 @@
 /**
- * 编辑器「选中组件」状态与派生数据。
+ * 编辑器「选中组件」状态与派生数据（支持多选）。
  *
  * 承载五区中左右面板与画布共享的选中态：
- *   - 组件清单（四类固定组件 + 每条自定义文本各成一项）与选中项中文名；
+ *   - 选中集合 selectedKeys（支持 2+ 组件对齐/分布）；派生的 selectedComponent
+ *     取「最后选中项」，供属性面板主体与状态栏复用；设值即退化为单选。
+ *   - 组件清单（五类固定组件 + 每条自定义文本各成一项）与选中项中文名；
  *   - 组件显隐开关、新增/删除自定义文本；
  *   - 当前选中组件对应的 layout / color（读写草稿）与画布拖拽回写。
  * 所有读写都作用于传入的草稿对象（reactive），本模块不自持副本。
@@ -21,20 +23,40 @@ interface ComponentListItem {
 
 /** 编辑器选中态组合式函数返回值 */
 export interface ComponentSelection {
+  /** 当前选中的全部组件 key（按选中先后顺序，末位为「主选中」） */
+  selectedKeys: Ref<string[]>;
+  /** 主选中组件 key（=最后选中项）；设值即单选该组件 */
   selectedComponent: Ref<string>;
+  /** 选中数量 */
+  selectedCount: ComputedRef<number>;
   componentList: ComputedRef<ComponentListItem[]>;
   selectedLabel: ComputedRef<string>;
+  /** 判断某组件是否被选中 */
+  isSelected: (key: string) => boolean;
+  /** 单选（替换整个选中集） */
+  selectOne: (key: string) => void;
+  /** 增量切换某组件选中态（Ctrl/Cmd/Shift 多选） */
+  toggleSelect: (key: string) => void;
+  /** 批量设置选中集 */
+  selectKeys: (keys: string[]) => void;
+  /** 清空选中 */
+  clearSelection: () => void;
   setComponentShow: (key: string, value: boolean) => void;
   addText: () => void;
   selectedTextIndex: ComputedRef<number>;
   selectedTextContent: WritableComputedRef<string>;
   selectedTextShow: WritableComputedRef<boolean>;
   removeSelectedText: () => void;
-  onCanvasSelect: (compKey: string) => void;
+  /** 画布点选：additive=true 为增量多选，否则单选 */
+  onCanvasSelect: (compKey: string, additive?: boolean) => void;
   currentLayout: WritableComputedRef<ComponentLayout>;
   currentColor: WritableComputedRef<string>;
   setCurrentColor: (v: string) => void;
   updateComponentLayout: (compKey: string, layout: ComponentLayout) => void;
+  /** 按 key 读取任意组件 layout（不存在返回 null） */
+  layoutByKey: (key: string) => ComponentLayout | null;
+  /** 按 key 写入 layout 补丁（合并到现有 layout，供对齐/图层动作使用） */
+  setLayoutByKey: (key: string, patch: Partial<ComponentLayout>) => void;
 }
 
 /**
@@ -42,14 +64,26 @@ export interface ComponentSelection {
  * @param draft 编辑草稿（reactive）
  */
 export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
-  /** 当前选中组件 key（clock / calendar / lunar / weather / text_N） */
-  const selectedComponent = ref<string>('clock');
+  /** 当前选中的组件 key 集合（clock / calendar / date / lunar / weather / text_N） */
+  const selectedKeys = ref<string[]>(['clock']);
 
-  /** 组件分类清单（四类固定组件 + 每条自定义文本各成一项） */
+  /** 主选中组件（最后选中项）；设值即单选，保持旧调用点语义 */
+  const selectedComponent = computed<string>({
+    get: () => selectedKeys.value[selectedKeys.value.length - 1] ?? '',
+    set: (v) => {
+      selectedKeys.value = v ? [v] : [];
+    },
+  });
+
+  /** 选中数量 */
+  const selectedCount = computed(() => selectedKeys.value.length);
+
+  /** 组件分类清单（五类固定组件 + 每条自定义文本各成一项） */
   const componentList = computed<ComponentListItem[]>(() => {
     const list: ComponentListItem[] = [
       { key: 'clock', label: '时钟', show: draft.components.clock.show, toggleable: true },
       { key: 'calendar', label: '日历', show: draft.components.calendar.show, toggleable: true },
+      { key: 'date', label: '日期', show: draft.components.date.show, toggleable: true },
       { key: 'lunar', label: '农历', show: draft.components.lunar.show, toggleable: true },
       { key: 'weather', label: '天气', show: draft.components.weather.show, toggleable: true },
     ];
@@ -66,16 +100,44 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     return list;
   });
 
-  /** 当前选中组件的中文名（右侧属性面板标题 / 状态栏提示） */
+  /** 当前主选中组件的中文名（右侧属性面板标题 / 状态栏提示） */
   const selectedLabel = computed(
     () => componentList.value.find((c) => c.key === selectedComponent.value)?.label ?? '',
   );
 
-  /** 组件显隐开关（clock/calendar/lunar/weather，以及每条自定义文本 text_N） */
+  /** 判断某组件是否被选中 */
+  function isSelected(key: string): boolean {
+    return selectedKeys.value.includes(key);
+  }
+
+  /** 单选：替换整个选中集 */
+  function selectOne(key: string): void {
+    selectedKeys.value = [key];
+  }
+
+  /** 增量切换：已选则移除，未选则追加（Ctrl/Cmd/Shift 多选） */
+  function toggleSelect(key: string): void {
+    selectedKeys.value = selectedKeys.value.includes(key)
+      ? selectedKeys.value.filter((k) => k !== key)
+      : [...selectedKeys.value, key];
+  }
+
+  /** 批量设置选中集（去重，保持传入顺序） */
+  function selectKeys(keys: string[]): void {
+    selectedKeys.value = Array.from(new Set(keys));
+  }
+
+  /** 清空选中 */
+  function clearSelection(): void {
+    selectedKeys.value = [];
+  }
+
+  /** 组件显隐开关（clock/calendar/date/lunar/weather，以及每条自定义文本 text_N） */
   function setComponentShow(key: string, value: boolean): void {
     switch (key) {
       case 'clock': draft.components.clock.show = value; break;
       case 'calendar': draft.components.calendar.show = value; break;
+      case 'date': draft.components.date.show = value; break;
       case 'lunar': draft.components.lunar.show = value; break;
       case 'weather': draft.components.weather.show = value; break;
       default:
@@ -93,14 +155,14 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     selectedComponent.value = `text_${draft.components.texts.length - 1}`;
   }
 
-  /** 当前选中的单条自定义文本下标（未选中文本时返回 -1） */
+  /** 当前主选中的单条自定义文本下标（未选中文本时返回 -1） */
   const selectedTextIndex = computed(() => {
     if (!selectedComponent.value.startsWith('text_')) return -1;
     const idx = Number(selectedComponent.value.slice(5));
     return draft.components.texts[idx] ? idx : -1;
   });
 
-  /** 当前选中单条文本的内容（供属性面板直接编辑；未选中文本时返回空串） */
+  /** 当前主选中单条文本的内容（供属性面板直接编辑；未选中文本时返回空串） */
   const selectedTextContent = computed<string>({
     get: () => {
       const i = selectedTextIndex.value;
@@ -112,7 +174,7 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     },
   });
 
-  /** 当前选中单条文本的显隐（供属性面板开关） */
+  /** 当前主选中单条文本的显隐（供属性面板开关） */
   const selectedTextShow = computed<boolean>({
     get: () => {
       const i = selectedTextIndex.value;
@@ -124,7 +186,7 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     },
   });
 
-  /** 删除当前选中的自定义文本（选中态回退到时钟） */
+  /** 删除当前主选中的自定义文本（选中态回退到时钟） */
   function removeSelectedText(): void {
     const idx = selectedTextIndex.value;
     if (idx < 0) return;
@@ -132,50 +194,57 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     selectedComponent.value = 'clock';
   }
 
-  /** 画布点选组件 → 左侧分类与右侧属性同步切换 */
-  function onCanvasSelect(compKey: string): void {
-    selectedComponent.value = compKey;
+  /** 画布点选组件 → 左侧分类与右侧属性同步切换（additive 时增量多选） */
+  function onCanvasSelect(compKey: string, additive?: boolean): void {
+    if (additive) toggleSelect(compKey);
+    else selectOne(compKey);
   }
 
-  /** 当前选中组件的 layout */
+  /** 当前主选中组件的 layout */
   const currentLayout = computed<ComponentLayout>({
     get: () => {
-      if (selectedComponent.value.startsWith('text_')) {
-        const text = draft.components.texts[Number(selectedComponent.value.slice(5))];
+      const key = selectedComponent.value;
+      if (key.startsWith('text_')) {
+        const text = draft.components.texts[Number(key.slice(5))];
         if (text) return text.layout;
       }
-      switch (selectedComponent.value) {
+      switch (key) {
         case 'clock': return draft.components.clock.layout;
         case 'calendar': return draft.components.calendar.layout;
+        case 'date': return draft.components.date.layout;
         case 'lunar': return draft.components.lunar.layout;
         case 'weather': return draft.components.weather.layout;
         default: return draft.components.clock.layout;
       }
     },
     set: (v) => {
-      if (selectedComponent.value.startsWith('text_')) {
-        const text = draft.components.texts[Number(selectedComponent.value.slice(5))];
+      const key = selectedComponent.value;
+      if (key.startsWith('text_')) {
+        const text = draft.components.texts[Number(key.slice(5))];
         if (text) text.layout = v;
         return;
       }
-      switch (selectedComponent.value) {
+      switch (key) {
         case 'clock': draft.components.clock.layout = v; break;
         case 'calendar': draft.components.calendar.layout = v; break;
+        case 'date': draft.components.date.layout = v; break;
         case 'lunar': draft.components.lunar.layout = v; break;
         case 'weather': draft.components.weather.layout = v; break;
       }
     },
   });
 
-  /** 当前选中组件的 color */
+  /** 当前主选中组件的 color */
   const currentColor = computed<string>({
     get: () => {
-      if (selectedComponent.value.startsWith('text_')) {
-        return draft.components.texts[Number(selectedComponent.value.slice(5))]?.color ?? '';
+      const key = selectedComponent.value;
+      if (key.startsWith('text_')) {
+        return draft.components.texts[Number(key.slice(5))]?.color ?? '';
       }
-      switch (selectedComponent.value) {
+      switch (key) {
         case 'clock': return draft.components.clock.color ?? '';
         case 'calendar': return draft.components.calendar.color ?? '';
+        case 'date': return draft.components.date.color ?? '';
         case 'lunar': return draft.components.lunar.color ?? '';
         case 'weather': return draft.components.weather.color ?? '';
         default: return '';
@@ -183,14 +252,16 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     },
     set: (v) => {
       const val = v || undefined;
-      if (selectedComponent.value.startsWith('text_')) {
-        const text = draft.components.texts[Number(selectedComponent.value.slice(5))];
+      const key = selectedComponent.value;
+      if (key.startsWith('text_')) {
+        const text = draft.components.texts[Number(key.slice(5))];
         if (text) text.color = val;
         return;
       }
-      switch (selectedComponent.value) {
+      switch (key) {
         case 'clock': draft.components.clock.color = val; break;
         case 'calendar': draft.components.calendar.color = val; break;
+        case 'date': draft.components.date.color = val; break;
         case 'lunar': draft.components.lunar.color = val; break;
         case 'weather': draft.components.weather.color = val; break;
       }
@@ -205,26 +276,54 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
 
   /** 更新指定组件的 layout（数字输入直接绑定 draft，此处供预览画布拖拽回写） */
   function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
-    if (compKey === 'clock') {
-      draft.components.clock.layout = layout;
-    } else if (compKey === 'calendar') {
-      draft.components.calendar.layout = layout;
-    } else if (compKey === 'lunar') {
-      draft.components.lunar.layout = layout;
-    } else if (compKey === 'weather') {
-      draft.components.weather.layout = layout;
-    } else if (compKey.startsWith('text_')) {
-      const idx = Number(compKey.slice(5));
-      if (draft.components.texts[idx]) {
-        draft.components.texts[idx].layout = layout;
-      }
+    setLayoutByKey(compKey, layout);
+  }
+
+  /** 按 key 读取任意组件 layout（不存在返回 null） */
+  function layoutByKey(key: string): ComponentLayout | null {
+    if (key.startsWith('text_')) {
+      return draft.components.texts[Number(key.slice(5))]?.layout ?? null;
+    }
+    switch (key) {
+      case 'clock': return draft.components.clock.layout;
+      case 'calendar': return draft.components.calendar.layout;
+      case 'date': return draft.components.date.layout;
+      case 'lunar': return draft.components.lunar.layout;
+      case 'weather': return draft.components.weather.layout;
+      default: return null;
+    }
+  }
+
+  /** 按 key 写入 layout 补丁（合并到现有 layout） */
+  function setLayoutByKey(key: string, patch: Partial<ComponentLayout>): void {
+    const cur = layoutByKey(key);
+    if (!cur) return;
+    const next: ComponentLayout = { ...cur, ...patch };
+    if (key.startsWith('text_')) {
+      const t = draft.components.texts[Number(key.slice(5))];
+      if (t) t.layout = next;
+      return;
+    }
+    switch (key) {
+      case 'clock': draft.components.clock.layout = next; break;
+      case 'calendar': draft.components.calendar.layout = next; break;
+      case 'date': draft.components.date.layout = next; break;
+      case 'lunar': draft.components.lunar.layout = next; break;
+      case 'weather': draft.components.weather.layout = next; break;
     }
   }
 
   return {
+    selectedKeys,
     selectedComponent,
+    selectedCount,
     componentList,
     selectedLabel,
+    isSelected,
+    selectOne,
+    toggleSelect,
+    selectKeys,
+    clearSelection,
     setComponentShow,
     addText,
     selectedTextIndex,
@@ -236,5 +335,7 @@ export function useComponentSelection(draft: SnoozeConfig): ComponentSelection {
     currentColor,
     setCurrentColor,
     updateComponentLayout,
+    layoutByKey,
+    setLayoutByKey,
   };
 }

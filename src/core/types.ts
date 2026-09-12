@@ -20,6 +20,8 @@ export interface ComponentLayout {
   w: number;
   /** 高度百分比 0-100（可选，缺省内容自适应） */
   h?: number;
+  /** 图层序（可选，越大越靠前；缺省按组件清单顺序） */
+  z?: number;
 }
 
 /** 设备白/黑名单 */
@@ -88,6 +90,20 @@ export interface CalendarComponent {
   layout: ComponentLayout;
   /** 自定义字体颜色 */
   color?: string;
+  /** 第三方组件自定义配置透传（内置渲染忽略，供插件消费） */
+  options?: Record<string, unknown>;
+}
+
+/** 日期组件（公历日期文本，支持 ISO 8601 占位符） */
+export interface DateComponent {
+  show: boolean;
+  /** 日期格式模板，占位符 YYYY/YY/MM/M/DD/D/dddd/ddd */
+  format: string;
+  layout: ComponentLayout;
+  /** 自定义字体颜色 */
+  color?: string;
+  /** 第三方组件自定义配置透传（内置渲染忽略，供插件消费） */
+  options?: Record<string, unknown>;
 }
 
 /** 农历组件 */
@@ -98,6 +114,8 @@ export interface LunarComponent {
   layout: ComponentLayout;
   /** 自定义字体颜色 */
   color?: string;
+  /** 第三方组件自定义配置透传（内置渲染忽略，供插件消费） */
+  options?: Record<string, unknown>;
 }
 
 /** 天气组件 */
@@ -107,6 +125,8 @@ export interface WeatherComponent {
   layout: ComponentLayout;
   /** 自定义字体颜色 */
   color?: string;
+  /** 第三方组件自定义配置透传（内置渲染忽略，供插件消费） */
+  options?: Record<string, unknown>;
 }
 
 /** 自定义文本（支持实体占位符 {entity_id}） */
@@ -117,11 +137,14 @@ export interface TextComponent {
   show?: boolean;
   /** 自定义字体颜色 */
   color?: string;
+  /** 第三方组件自定义配置透传（内置渲染忽略，供插件消费） */
+  options?: Record<string, unknown>;
 }
 
 export interface Components {
   clock: ClockComponent;
   calendar: CalendarComponent;
+  date: DateComponent;
   lunar: LunarComponent;
   weather: WeatherComponent;
   texts: TextComponent[];
@@ -163,6 +186,7 @@ export interface SnoozeConfig {
 export const DEFAULT_LAYOUTS = {
   clock: { x: 50, y: 50, w: 60 } as ComponentLayout,
   calendar: { x: 50, y: 85, w: 40 } as ComponentLayout,
+  date: { x: 50, y: 20, w: 30 } as ComponentLayout,
   lunar: { x: 50, y: 92, w: 30 } as ComponentLayout,
   weather: { x: 85, y: 10, w: 25 } as ComponentLayout,
   text: { x: 15, y: 10, w: 30 } as ComponentLayout,
@@ -190,6 +214,7 @@ export const DEFAULT_CONFIG: SnoozeConfig = {
   components: {
     clock: { show: true, style: 'digital', hour24: true, seconds: false, layout: DEFAULT_LAYOUTS.clock },
     calendar: { show: true, week_start: 1, show_week_number: false, format: 'M月D日 dddd', layout: DEFAULT_LAYOUTS.calendar },
+    date: { show: false, format: 'YYYY年MM月DD日 dddd', layout: DEFAULT_LAYOUTS.date },
     lunar: { show: false, format: '{lunar_month}{lunar_day}', layout: DEFAULT_LAYOUTS.lunar },
     weather: { show: false, entity: '', layout: DEFAULT_LAYOUTS.weather },
     texts: [],

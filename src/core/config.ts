@@ -44,8 +44,8 @@ function clamp(v: number, min: number, max: number): number {
 
 /**
  * 规范化组件布局。
- * 合法输入：{ x: number, y: number, w: number, h?: number }，各字段夹取 0-100。
- * 非法输入（含旧版 position 字段）回退 fallback。
+ * 合法输入：{ x, y, w, h?: number, z?: number }，坐标/尺寸夹取 0-100，z 夹取 0-999。
+ * 非法输入（含旧版 position 字段）回退 fallback。z 缺省时不输出（保持向后兼容）。
  */
 function normalizeLayout(v: unknown, fallback: ComponentLayout): ComponentLayout {
   if (!isObject(v)) return { ...fallback };
@@ -53,12 +53,23 @@ function normalizeLayout(v: unknown, fallback: ComponentLayout): ComponentLayout
   const y = num(v.y, fallback.y);
   const w = num(v.w, fallback.w);
   const h = typeof v.h === 'number' ? v.h : fallback.h;
+  const z = typeof v.z === 'number' && Number.isFinite(v.z) ? v.z : fallback.z;
   return {
     x: clamp(x, 0, 100),
     y: clamp(y, 0, 100),
     w: clamp(w, 0, 100),
     ...(h !== undefined ? { h: clamp(h, 0, 100) } : {}),
+    ...(z !== undefined ? { z: clamp(Math.round(z), 0, 999) } : {}),
   };
+}
+
+/**
+ * 规范化第三方 options 透传字段。
+ * 仅保留 JSON 安全对象（浅拷贝），非对象回退 undefined。
+ */
+function normalizeOptions(v: unknown): Record<string, unknown> | undefined {
+  if (!isObject(v)) return undefined;
+  return { ...v };
 }
 
 /**
@@ -126,6 +137,7 @@ function normalizeEntityConditions(v: unknown): EntityCondition[] | undefined {
 const FALLBACK_LAYOUTS = {
   clock: DEFAULT_CONFIG.components.clock.layout,
   calendar: DEFAULT_CONFIG.components.calendar.layout,
+  date: DEFAULT_CONFIG.components.date.layout,
   lunar: DEFAULT_CONFIG.components.lunar.layout,
   weather: DEFAULT_CONFIG.components.weather.layout,
   text: { x: 15, y: 10, w: 30 } as ComponentLayout,
@@ -143,6 +155,7 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
   const comp = isObject(raw.components) ? raw.components : {};
   const clock = isObject(comp.clock) ? comp.clock : {};
   const calendar = isObject(comp.calendar) ? comp.calendar : {};
+  const date = isObject(comp.date) ? comp.date : {};
   const lunar = isObject(comp.lunar) ? comp.lunar : {};
   const weather = isObject(comp.weather) ? comp.weather : {};
   const bg = isObject(raw.background) ? raw.background : {};
@@ -160,6 +173,7 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
           // show 缺省视为显示（兼容旧配置），仅显式 false 才隐藏
           show: bool(t.show, true),
           color: normalizeColor(t.color),
+          options: normalizeOptions(t.options),
         }))
     : [];
 
@@ -215,18 +229,28 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
         format: str(calendar.format, d.components.calendar.format),
         layout: normalizeLayout(calendar.layout, FALLBACK_LAYOUTS.calendar),
         color: normalizeColor(calendar.color),
+        options: normalizeOptions(calendar.options),
+      },
+      date: {
+        show: bool(date.show, d.components.date.show),
+        format: str(date.format, d.components.date.format),
+        layout: normalizeLayout(date.layout, FALLBACK_LAYOUTS.date),
+        color: normalizeColor(date.color),
+        options: normalizeOptions(date.options),
       },
       lunar: {
         show: bool(lunar.show, d.components.lunar.show),
         format: str(lunar.format, d.components.lunar.format),
         layout: normalizeLayout(lunar.layout, FALLBACK_LAYOUTS.lunar),
         color: normalizeColor(lunar.color),
+        options: normalizeOptions(lunar.options),
       },
       weather: {
         show: bool(weather.show, d.components.weather.show),
         entity: str(weather.entity, d.components.weather.entity),
         layout: normalizeLayout(weather.layout, FALLBACK_LAYOUTS.weather),
         color: normalizeColor(weather.color),
+        options: normalizeOptions(weather.options),
       },
       texts,
     },

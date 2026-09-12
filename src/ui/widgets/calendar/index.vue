@@ -1,19 +1,27 @@
 <script setup lang="ts">
+/**
+ * 日历内容组件（内置）。
+ *
+ * 从 options 读取：week_start（0=周日 1=周一）、show_week_number、format（日期标题模板）。
+ * 第三方如需自定义，可在 widgets/thirdparty/calendar/ 放同 id 目录整体替换。
+ */
 import { computed } from 'vue';
 import { buildCalendarGrid, weekdayHeaders, isoWeekNumber, formatDate } from '@/core/clock';
+import type { WidgetProps } from '../types';
 
-const props = defineProps<{
-  now: Date;
-  weekStart: 0 | 1;
-  showWeekNumber: boolean;
-  format: string;
-}>();
+const props = defineProps<WidgetProps>();
+
+const weekStart = computed<0 | 1>(() => (props.options.week_start === 0 ? 0 : 1));
+const showWeekNumber = computed(() => props.options.show_week_number === true);
+const format = computed<string>(() =>
+  typeof props.options.format === 'string' && props.options.format ? props.options.format : 'M月D日 dddd',
+);
 
 const grid = computed(() =>
-  buildCalendarGrid(props.now.getFullYear(), props.now.getMonth(), props.weekStart),
+  buildCalendarGrid(props.now.getFullYear(), props.now.getMonth(), weekStart.value),
 );
-const headers = computed(() => weekdayHeaders(props.weekStart));
-const title = computed(() => formatDate(props.now, props.format));
+const headers = computed(() => weekdayHeaders(weekStart.value));
+const title = computed(() => formatDate(props.now, format.value));
 </script>
 
 <template>

@@ -237,4 +237,61 @@ describe('normalizeConfig 配置规范化', () => {
     expect(normalizeConfig({ screen: { preset: 'nope' } }).screen).toEqual(DEFAULT_CONFIG.screen);
     expect(normalizeConfig({ screen: { width: 'x', height: 'y' } }).screen).toEqual(DEFAULT_CONFIG.screen);
   });
+
+  it('date 组件规范化（show/format/layout/color）', () => {
+    const c = normalizeConfig({
+      components: {
+        date: { show: true, format: 'YYYY-MM-DD dddd', layout: { x: 10, y: 20, w: 30 }, color: '#123456' },
+      },
+    });
+    expect(c.components.date.show).toBe(true);
+    expect(c.components.date.format).toBe('YYYY-MM-DD dddd');
+    expect(c.components.date.layout).toEqual({ x: 10, y: 20, w: 30 });
+    expect(c.components.date.color).toBe('#123456');
+  });
+
+  it('date 缺省 show=false，format 回退默认模板', () => {
+    const c = normalizeConfig({ components: { date: {} } });
+    expect(c.components.date.show).toBe(DEFAULT_CONFIG.components.date.show);
+    expect(c.components.date.format).toBe(DEFAULT_CONFIG.components.date.format);
+    expect(c.components.date.layout).toEqual(DEFAULT_CONFIG.components.date.layout);
+  });
+
+  it('layout z 夹取 0-999 并取整', () => {
+    expect(normalizeConfig({ components: { clock: { layout: { x: 50, y: 50, w: 30, z: -5 } } } }).components.clock.layout.z).toBe(0);
+    expect(normalizeConfig({ components: { clock: { layout: { x: 50, y: 50, w: 30, z: 5000 } } } }).components.clock.layout.z).toBe(999);
+    expect(normalizeConfig({ components: { clock: { layout: { x: 50, y: 50, w: 30, z: 3.7 } } } }).components.clock.layout.z).toBe(4);
+  });
+
+  it('layout z 缺省不输出（向后兼容）', () => {
+    const c = normalizeConfig({ components: { clock: { layout: { x: 50, y: 50, w: 30 } } } });
+    expect(c.components.clock.layout.z).toBeUndefined();
+    expect('z' in c.components.clock.layout).toBe(false);
+  });
+
+  it('options 透传 JSON 安全对象（各内容组件）', () => {
+    const c = normalizeConfig({
+      components: {
+        calendar: { options: { week_start: 0, extra: 'x' } },
+        date: { options: { format: 'M/D' } },
+        lunar: { options: { format: '{ganzhi}' } },
+        weather: { options: { entity: 'weather.home' } },
+      },
+    });
+    expect(c.components.calendar.options).toEqual({ week_start: 0, extra: 'x' });
+    expect(c.components.date.options).toEqual({ format: 'M/D' });
+    expect(c.components.lunar.options).toEqual({ format: '{ganzhi}' });
+    expect(c.components.weather.options).toEqual({ entity: 'weather.home' });
+  });
+
+  it('options 非对象回退 undefined', () => {
+    const c = normalizeConfig({ components: { date: { options: 'nope' }, calendar: { options: [1, 2] } } });
+    expect(c.components.date.options).toBeUndefined();
+    expect(c.components.calendar.options).toBeUndefined();
+  });
+
+  it('texts 的 options 同样透传', () => {
+    const c = normalizeConfig({ components: { texts: [{ content: 'x', options: { font_size: 20 } }] } });
+    expect(c.components.texts[0].options).toEqual({ font_size: 20 });
+  });
 });

@@ -84,6 +84,7 @@ export function mergeConfig(
       ...(override.components ?? {}),
       clock: { ...base.components.clock, ...(override.components?.clock ?? {}) },
       calendar: { ...base.components.calendar, ...(override.components?.calendar ?? {}) },
+      date: { ...base.components.date, ...(override.components?.date ?? {}) },
       lunar: { ...base.components.lunar, ...(override.components?.lunar ?? {}) },
       weather: { ...base.components.weather, ...(override.components?.weather ?? {}) },
       texts: override.components?.texts ?? base.components.texts,

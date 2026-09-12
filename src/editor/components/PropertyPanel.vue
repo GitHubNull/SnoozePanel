@@ -38,6 +38,7 @@ const emit = defineEmits<{
 const draft = injectEditorDraft();
 const {
   selectedComponent,
+  selectedCount,
   selectedLabel,
   currentLayout,
   currentColor,
@@ -106,6 +107,11 @@ function onResizeStart(ev: PointerEvent): void {
       <div class="panel-scroll">
         <div class="props-subject">{{ selectedLabel }}</div>
 
+        <!-- 多选提示：属性面板主体针对「最后选中项」，其余选中项仅供对齐/图层操作 -->
+        <div v-if="selectedCount > 1" class="multi-hint">
+          已选 {{ selectedCount }} 项 · 当前编辑「{{ selectedLabel }}」，其余可用于对齐 / 图层
+        </div>
+
         <!-- 时钟属性：表盘卡片 + 时间显示 -->
         <template v-if="selectedComponent === 'clock'">
           <div class="face-selector-card" @click="onOpenMarketplace">
@@ -145,6 +151,15 @@ function onResizeStart(ev: PointerEvent): void {
             <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
           </div>
           <div class="inline-row"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
+        </template>
+
+        <!-- 日期属性（ISO 8601 占位符格式模板） -->
+        <template v-if="selectedComponent === 'date'">
+          <div class="field">
+            <label>日期格式模板</label>
+            <InputText v-model="draft.components.date.format" class="w-full" placeholder="YYYY年MM月DD日 dddd" />
+            <small>占位符：YYYY 四位年 / YY 两位年 / MM 两位月 / M 月 / DD 两位日 / D 日 / dddd 星期全称 / ddd 星期简称</small>
+          </div>
         </template>
 
         <!-- 农历属性 -->
@@ -260,6 +275,18 @@ function onResizeStart(ev: PointerEvent): void {
   font-weight: 700;
   color: var(--primary-color, #5ea0ff);
   margin-bottom: 12px;
+}
+
+/* 多选提示条 */
+.multi-hint {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--sp-chrome-text, #d8dcdf);
+  background: color-mix(in srgb, var(--primary-color, #5ea0ff) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color, #5ea0ff) 40%, transparent);
 }
 
 /* 属性区拖拽条贴左边缘外扩 */

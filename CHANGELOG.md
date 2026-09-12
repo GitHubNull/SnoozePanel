@@ -4,6 +4,26 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.0] - 2026-09-13 00:01:10
+
+### Added
+- 内容组件插件化体系（`src/ui/widgets/`）：`registry.ts`（import.meta.glob 构建时自动收集，第三方同 id 覆盖内置）+ `types.ts`（WidgetProps 统一 props）；每个组件一个目录（`widgets/<id>/index.vue` + 可选 `widget.meta.ts`），第三方放 `widgets/thirdparty/<id>/`；原四个硬编码组件迁移为内置 widgets（calendar/date/lunar/weather/text）
+- 新增「日期」内容组件（`widgets/date/`）：ISO 8601 占位符格式模板（YYYY/YY/MM/M/DD/D/dddd/ddd，`formatDate` 新增 YY 两位年），编辑器属性面板可编辑模板（默认关闭，默认模板 `YYYY年MM月DD日 dddd`）
+- 编辑器多选：`selectedKeys` 选中集合（Ctrl/Cmd/Shift 增量多选）+ 主选中语义（最后选中项供属性面板主体）+ 画布/分类面板多选高亮与「已选 N 项」提示
+- 对齐 / 分布（`core/align.ts` 纯函数 + `useAlignmentActions`）：以选区外接框为基准的六向对齐（左/右/水平居中/顶/底/垂直居中）与水平/垂直平均分布（首尾不动）；按可见内容盒量测、位移夹取写回 `layout.x/y`
+- 图层（`core/layers.ts` 纯函数 + `useLayerActions`）：置顶/置底/上移/下移 + z 密集序规范化（0..n-1）；`layout.z` 字段（可选，夹取 0-999），ScreensaverApp 按 z 升序渲染叠放
+- 顶部工具条（`TopToolbar.vue`）：菜单栏与工作区之间「对齐」「图层」两个 PrimeVue 弹出菜单（图标 + 中文 + 快捷键提示，按选中数禁用）
+- 编辑器快捷键（`useEditorShortcuts`）：Alt+L/C/R/T/M/B 对齐、Alt+H/V 分布、Ctrl+[ / Ctrl+] 置底/置顶、Ctrl+Shift 上移/下移一层；焦点在输入态时自动屏蔽
+- 组件配置透传：五类组件新增 `options` 字段（JSON 安全对象浅拷贝），供第三方组件消费自定义配置
+- 文档：新增 `doc/开发维护/组件开发指南/`（基础篇 ×3 / 进阶篇 ×3 / 接口规范 / 专项指南 ×5，共 12 篇）
+- 测试：新增 `align.spec.ts` / `layers.spec.ts` / `widgets.spec.ts`；`config.spec.ts` 补 date 规范化、`layout.z` 夹取、`options` 透传用例
+
+### Changed
+- `ScreensaverApp` 组件渲染重构：删除 `CalendarView`/`LunarView`/`WeatherView`/`CustomText` 四个硬编码分支，统一经 widgets 注册表动态挂载（非 clock 组件一律走 `<component :is>` + `options`）
+- 编辑器选中态全链路迁移：单值 `selected` → `selectedKeys` 数组（EditorApp / CategoryPanel / EditorCanvas / DevicePreview / ComponentWrapper，`select` 事件带 `additive` 标志）
+- `ComponentWrapper` 新增 `zIndex` 属性（写入 z-index 控制堆叠）
+- `AGENTS.md` 与 AI 维护规范（符号表 / 验收清单）同步 widgets 体系、对齐/图层符号与新场景指引
+
 ## [0.8.0] - 2026-09-12 23:13:58
 
 ### Added

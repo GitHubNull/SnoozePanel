@@ -20,8 +20,10 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   ├── device.ts       # resolveDeviceId / isDeviceAllowed
 │   │   ├── conditions.ts   # evalConditions：idle/entity/time/sun AND 求值
 │   │   ├── lunar.ts        # solarToLunar / formatLunar（1900–2100 自包含位表）
-│   │   ├── clock.ts        # 日历/周数/日期格式化
+│   │   ├── clock.ts        # 日历/周数/日期格式化（formatDate 支持 ISO 占位符 YYYY/YY/MM/M/DD/D/dddd/ddd）
 │   │   ├── template.ts     # evalTemplate：display_template 安全求值
+│   │   ├── align.ts        # alignDeltas / distributeDeltas：对齐/分布位移纯函数
+│   │   ├── layers.ts       # reorderLayers：图层置顶/置底/上移/下移 + z 规范化
 │   │   ├── text.ts         # 实体占位符替换
 │   │   └── hass.ts         # HassEntity 等 HA 类型
 │   ├── runtime/            # 运行时层（DOM/定时器/事件）
@@ -31,16 +33,17 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   └── ticker.ts       # Ticker：1s tick，后台标签页暂停
 │   ├── ui/                 # 屏保 UI
 │   │   ├── ScreensaverApp.vue
-│   │   ├── components/     # ComponentWrapper / FacePreview（缩略预览摄像机）/ CalendarView / LunarView / WeatherView / CustomText
+│   │   ├── components/     # ComponentWrapper / FacePreview（缩略预览摄像机）/ DevicePreview / ScreenRulers
+│   │   ├── widgets/        # 内容组件框架：registry.ts（import.meta.glob 构建时收集）+ types.ts + 各组件目录（calendar/date/lunar/weather/text）+ thirdparty/
 │   │   ├── faces/          # 表盘框架：registry.ts（import.meta.glob 构建时收集）+ types.ts + 各表盘目录（digital/ring/analog/chrono/minimal/orbit）
 │   │   └── themes.ts       # midnight / paper 两套主题
 │   ├── editor/             # GUI 编辑器
 │   │   ├── editor.ts       # SnoozePanelEditorElement（HA card editor 协议）
-│   │   ├── EditorApp.vue   # 编辑器根：瘦编排层（组织五区子组件 + Toast + 表盘市场，provide 三份共享上下文）
-│   │   ├── editorContext.ts # 编辑器共享上下文注入键与 helper（草稿 / UI 偏好 / 选中态）
+│   │   ├── EditorApp.vue   # 编辑器根：瘦编排层（组织五区子组件 + TopToolbar + Toast + 表盘市场，provide 四份共享上下文）
+│   │   ├── editorContext.ts # 编辑器共享上下文注入键与 helper（草稿 / UI 偏好 / 选中态 / 工具条动作）
 │   │   ├── editor.css      # 编辑器五区共享样式（各子组件以 <style scoped src> 复用）
-│   │   ├── components/     # 五区子组件（EditorMenuBar / CategoryPanel / EditorCanvas / PropertyPanel / StatusBar）
-│   │   ├── composables/    # 组合式函数（useEditorDraft / useComponentSelection / useDeviceSave）
+│   │   ├── components/     # 五区子组件（EditorMenuBar / TopToolbar / CategoryPanel / EditorCanvas / PropertyPanel / StatusBar）
+│   │   ├── composables/    # 组合式函数（useEditorDraft / useComponentSelection / useAlignmentActions / useLayerActions / useEditorShortcuts / useDeviceSave）
 │   │   ├── useEditorLayout.ts # 编辑器 UI 偏好：面板宽度/收起 + 画布网格/磁吸（localStorage，仅 UI）
 │   │   ├── panels/         # 菜单栏全局配置浮层（Basic / Appearance / Conditions / Device / Advanced）
 │   │   └── forms/          # 复用分区表单（EntityConditionsForm）
@@ -144,6 +147,23 @@ doc/
     │   ├── 01-环境搭建.md
     │   ├── 02-代码结构导读.md
     │   └── 03-发布与共建.md
+    ├── 第三方表盘开发指南.md   # 表盘（时钟）开发契约
+    ├── 组件开发指南/           # 内容组件（widget）分级教程 + 接口规范
+    │   ├── 01-基础篇/
+    │   │   ├── 01-Hello-World组件.md
+    │   │   ├── 02-目录契约与注册机制.md
+    │   │   └── 03-主题与样式约定.md
+    │   ├── 02-进阶篇/
+    │   │   ├── 01-状态管理与响应式数据.md
+    │   │   ├── 02-性能优化与动效.md
+    │   │   └── 03-模块拆分与复用.md
+    │   ├── 03-组件接口规范.md
+    │   └── 04-专项指南/
+    │       ├── 日历组件.md
+    │       ├── 日期组件.md
+    │       ├── 农历组件.md
+    │       ├── 天气组件.md
+    │       └── 自定义文本组件.md
     └── AI编程代理开发维护规范/
         ├── 01-代理工作规范.md
         ├── 02-符号级维护指南.md
