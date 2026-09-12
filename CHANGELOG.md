@@ -4,6 +4,26 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.1] - 2026-09-12 17:24:57
+
+### Added
+- 组件内容等比缩放：`ComponentWrapper` 新增内容层（`transform: scale()`），以 `baseWidthFor`（组件默认布局宽）为「1x」基准，布局宽与基准比值即缩放比；缩放手柄反向缩放、屏幕尺寸恒 16px
+- 编辑器预览画布接入真实 `Ticker`，时钟秒级实时刷新
+- dev 实测页新增「未应用变更」徽标（编辑器配置与最近应用快照对比提示）
+- 新增 `src/tests/drag.spec.ts`：`computeResize` 轴向/等比缩放与边界防护单测
+
+### Changed
+- `makeResizable` 抽出纯函数 `computeResize`，支持 `lockAspect` 等比模式（任意方向拖拽手柄等比缩放）
+- 编辑态虚线框与缩放手柄改依附内容层，虚线框恒等于组件内容边界
+- dev 实测页配置以编辑器为单一来源（挂载/重新应用均读取编辑器当前配置）
+- 移除 `mountScreensaverPreview`（`preview.ts` / `main.ts` / dev 页）
+- `FacePreview` 撑满宿主容器（`width/height: 100%`）
+
+### Fixed
+- 修复组件字体颜色「改不了」：PrimeVue ColorPicker 输出裸 hex（无 `#`），新增 `attachHexHash` 补全（编辑器 / 文本表单 / `normalizeColor` 容错）
+- 修复编辑配置后触发屏保仍沿用首次配置：`setConfig` 对运行中控制器热同步（含设备级覆盖缓存）
+- 修复缩放手柄在组件缩小时难以抓取、虚线框小于组件内容（手柄恒定 16px、虚线框随内容缩放）
+
 ## [0.3.0] - 2026-09-12 16:11:05
 
 ### Added

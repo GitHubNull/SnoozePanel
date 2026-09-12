@@ -4,10 +4,12 @@
  *
  * 设计约束：
  *   - 仅消费构建产物暴露的 window.SnoozePanelTestApi（只读、无副作用），
- *     跨 IIFE 边界获取表盘清单与实时预览；
+ *     跨 IIFE 边界获取表盘清单，并在主内容区「内嵌真实配置编辑器」（mountEditor）；
  *   - 触发 / 退出走生产同款 screensaver_entity 通路
  *     （mock input_boolean 置位 + 重新赋值 el.hass → controller.syncFromEntity）；
- *   - 配置编辑器直接内嵌真实产物（mountEditor），与 HA 环境完全一致；
+ *   - 配置以编辑器为单一来源：挂载时读取编辑器当前配置；编辑器的变更（config-changed）
+ *     实时回填给运行中的面板元素（与 HA 收到 config-changed 后回填 setConfig 一致）；
+ *   - 页面布局：顶栏（运行时操作）/ 主内容区（内嵌编辑器：左工具栏·中预览·右属性）/ 底栏（日志·设备）；
  *   - 所有操作走 Toast + 分级日志，全局异常（error / unhandledrejection）也纳入日志，
  *     保证「控制台零报错」可自证；
  *   - 本文件由 tsconfig.dev.json（allowJs + checkJs）做类型检查，JSDoc 与 src 侧类型对齐。
@@ -46,19 +48,6 @@
  */
 
 /**
- * 完整屏保预览参数（与 src/runtime/preview.ts 的 ScreensaverPreviewOptions 对齐）。
- * @typedef {Object} ScreensaverPreviewOptions
- * @property {string} [deviceId]
- */
-
-/**
- * 完整屏保预览句柄（与 src/runtime/preview.ts 的 ScreensaverPreviewHandle 对齐）。
- * @typedef {Object} ScreensaverPreviewHandle
- * @property {(config: SnoozeConfig) => void} update
- * @property {() => void} destroy
- */
-
-/**
  * SnoozeConfig（与 src/core/types.ts 对齐，dev 页仅作透传）。
  * @typedef {Record<string, unknown>} SnoozeConfig
  */
@@ -75,7 +64,6 @@
  * @typedef {Object} TestApi
  * @property {() => FaceOption[]} listFaces
  * @property {(host: HTMLElement, faceId: string, opts?: FacePreviewOptions) => FacePreviewHandle} mountFacePreview
- * @property {(host: HTMLElement, config: SnoozeConfig, hass: MockHass, opts?: ScreensaverPreviewOptions) => ScreensaverPreviewHandle} mountScreensaverPreview
  * @property {(host: HTMLElement, config: SnoozeConfig, hass: MockHass) => EditorHandle} mountEditor
  */
 
@@ -99,7 +87,7 @@
  */
 
 /**
- * snooze-panel / snooze-panel-editor 自定义元素的最小调用面。
+ * snooze-panel 自定义元素的最小调用面。
  * @typedef {HTMLElement & {
  *   setConfig(config: Record<string, unknown>): void;
  *   hass: MockHass | null;
@@ -112,6 +100,8 @@
 const SCREENSAVER_ENTITY = 'input_boolean.screensaver';
 /** 退出冷却秒数（与运行时配置一致；用于状态徽标展示） */
 const EXIT_COOLDOWN_SECONDS = 2;
+/** 初始闲置秒数（编辑器首次挂载的默认值，之后以编辑器内配置为准） */
+const DEFAULT_IDLE_SECONDS = 15;
 /** 构建产物路径（相对 dev/ 页面；保留 ?t= 做缓存穿透） */
 const BUNDLE_URL = '../tmp/dist/snoozepanel.js';
 /** 日志条目上限（超出丢弃最旧条目，防止 DOM 无限膨胀） */
@@ -132,21 +122,16 @@ function $id(id) {
 
 /** 页面元素引用（模块加载时解析一次） */
 const el = {
-  idleChips: $id('idle-chips'),
-  idleCustom: /** @type {HTMLInputElement} */ ($id('idle-custom')),
   btnMount: /** @type {HTMLButtonElement} */ ($id('btn-mount')),
+  btnReapply: /** @type {HTMLButtonElement} */ ($id('btn-reapply')),
   btnTrigger: /** @type {HTMLButtonElement} */ ($id('btn-trigger')),
   btnExit: /** @type {HTMLButtonElement} */ ($id('btn-exit')),
   btnUnmount: /** @type {HTMLButtonElement} */ ($id('btn-unmount')),
   badgeBundle: $id('badge-bundle'),
+  badgeDirty: $id('badge-dirty'),
   badgeRuntime: $id('badge-runtime'),
   btnReloadBundle: /** @type {HTMLButtonElement} */ ($id('btn-reload-bundle')),
-  btnEditorToggle: /** @type {HTMLButtonElement} */ ($id('btn-editor-toggle')),
-  editorBody: $id('editor-body'),
   editorHost: $id('editor-host'),
-  editorDirty: $id('editor-dirty'),
-  previewCanvas: $id('preview-canvas'),
-  btnReapply: /** @type {HTMLButtonElement} */ ($id('btn-reapply')),
   btnRefreshDevices: /** @type {HTMLButtonElement} */ ($id('btn-refresh-devices')),
   deviceList: /** @type {HTMLUListElement} */ ($id('device-list')),
   btnClearLog: /** @type {HTMLButtonElement} */ ($id('btn-clear-log')),
@@ -166,19 +151,14 @@ let api;
 /** @type {PanelElementLike | null} */
 let panelEl = null;
 /** 挂载时生效的闲置秒数（供倒计时展示，避免与后续 UI 修改混淆） */
-let mountedIdleSeconds = 15;
+let mountedIdleSeconds = DEFAULT_IDLE_SECONDS;
 
-/** 编辑器句柄（惰性创建）/ 未应用草稿 / 脏标记 */
+/** 内嵌编辑器句柄（主内容区常驻） */
 /** @type {EditorHandle | null} */
 let editorHandle = null;
-/** 中间「阅览画布」完整屏保预览句柄 */
-/** @type {ScreensaverPreviewHandle | null} */
-let previewHandle = null;
+/** 最近一次「应用」（挂载 / 重新应用）所采用的配置快照，用于「有未应用变更」徽标比对 */
 /** @type {SnoozeConfig | null} */
-let editorDraft = null;
-let editorDirty = false;
-/** @type {number | undefined} */
-let editorDebounceTimer;
+let appliedSnapshot = null;
 
 /** 待机倒计时基准：最近一次用户输入 / 挂载时刻 */
 let lastInputAt = Date.now();
@@ -381,7 +361,7 @@ function loadBundleScript() {
   });
 }
 
-/** 加载（或重试加载）构建产物并初始化编辑器。 */
+/** 加载（或重试加载）构建产物并初始化内嵌编辑器。 */
 async function loadBundle() {
   setBundleBadge('loading');
   el.btnReloadBundle.hidden = true;
@@ -413,21 +393,13 @@ async function loadBundle() {
 /* ============================ 配置构建 ============================ */
 
 /**
- * 约束闲置秒数在 5–3600（与 core/config.ts normalizeConfig 一致）。
- * @param {number} value
- * @returns {number}
+ * 组装初始运行时配置（内嵌编辑器首次挂载用；固定 screensaver_entity 触发通路）。
+ * 之后一切配置以编辑器为单一来源，本函数仅提供编辑器初始值。
  */
-function clampIdle(value) {
-  if (!Number.isFinite(value)) return 15;
-  return Math.min(3600, Math.max(5, Math.round(value)));
-}
-
-/** 组装基础运行时配置（控制面板当前选项 + 固定 screensaver_entity 触发通路）。 */
 function buildBaseConfig() {
-  const idleSeconds = clampIdle(Number(el.idleCustom.value));
   return {
     enabled: true,
-    idle_seconds: idleSeconds,
+    idle_seconds: DEFAULT_IDLE_SECONDS,
     exit_cooldown_seconds: EXIT_COOLDOWN_SECONDS,
     theme: 'midnight',
     screensaver_entity: SCREENSAVER_ENTITY,
@@ -444,6 +416,11 @@ function buildBaseConfig() {
       images: [], interval_seconds: 30, dim: 0.45,
     },
   };
+}
+
+/** 读取编辑器当前配置（编辑器为单一来源；未就绪时回退初始配置）。 */
+function currentConfig() {
+  return editorHandle ? editorHandle.getConfig() : buildBaseConfig();
 }
 
 /* ============================ 运行时挂载 / 触发 / 退出 ============================ */
@@ -477,7 +454,7 @@ function mountRuntime(config, quiet = false) {
   element.hass = mockHass;
   document.body.appendChild(element);
   panelEl = element;
-  mountedIdleSeconds = typeof config.idle_seconds === 'number' ? config.idle_seconds : clampIdle(Number(el.idleCustom.value));
+  mountedIdleSeconds = typeof config.idle_seconds === 'number' ? config.idle_seconds : DEFAULT_IDLE_SECONDS;
   lastInputAt = Date.now();
   log('ok', 'snooze-panel 已挂载（idle ' + mountedIdleSeconds + 's，触发实体 ' + SCREENSAVER_ENTITY + '）');
   if (!quiet) {
@@ -487,9 +464,26 @@ function mountRuntime(config, quiet = false) {
   return true;
 }
 
-/** 挂载按钮：按控制面板选项组装配置并挂载。 */
+/** 挂载按钮：按编辑器当前配置挂载。 */
 function handleMountClick() {
-  mountRuntime(buildBaseConfig());
+  const config = currentConfig();
+  if (!mountRuntime(config)) return;
+  appliedSnapshot = config;
+  updateDirtyBadge();
+}
+
+/** 重新应用配置：按编辑器当前配置卸载重挂（保留编辑器实例，配置来源不变）。 */
+function handleReapplyClick() {
+  if (!panelEl) {
+    toast('warning', '运行时未挂载', '请先点击「挂载运行时」。');
+    return;
+  }
+  const config = currentConfig();
+  if (!mountRuntime(config, true)) return;
+  appliedSnapshot = config;
+  updateDirtyBadge();
+  log('ok', '配置已重新应用（来源：编辑器当前配置）');
+  toast('success', '配置已重新应用', '已按编辑器当前配置重挂运行时。');
 }
 
 /** 触发屏保：mock 实体置 on + 重新赋值 hass（生产同款 syncFromEntity 通路）。 */
@@ -537,7 +531,7 @@ function handleUnmountClick() {
 
 /* ============================ 状态徽标与按钮态 ============================ */
 
-/** 更新运行时状态徽标（未挂载 / 屏保中 / 冷却中 / 待机倒计时）。 */
+/** 更新运行时状态徽标（未挂载 / 屏保中 / 冷却中 / 待机倒计时），并顺带刷新「未应用变更」徽标。 */
 function updateRuntimeStatus() {
   const active = screensaverActive();
   if (active !== lastActiveState) {
@@ -552,6 +546,7 @@ function updateRuntimeStatus() {
   // 按钮态无条件随状态刷新：挂载/卸载只改变 panelEl，不改变激活态，
   // 若仅在激活态跃迁时刷新会漏掉这两个关键路径。
   updateActionButtons();
+  updateDirtyBadge();
   let text = '未挂载';
   let cls = 'badge';
   if (panelEl) {
@@ -574,14 +569,26 @@ function updateRuntimeStatus() {
   }
 }
 
-/** 根据运行时状态刷新按钮可用性与 loading 态。 */
+/** 根据运行时状态刷新按钮可用性。 */
 function updateActionButtons() {
   const active = screensaverActive();
   el.btnMount.disabled = !bundleReady || panelEl !== null;
+  el.btnReapply.disabled = !bundleReady || panelEl === null;
   el.btnTrigger.disabled = panelEl === null || active;
   el.btnExit.disabled = panelEl === null || !active;
   el.btnUnmount.disabled = panelEl === null;
-  el.btnReapply.disabled = !bundleReady;
+}
+
+/** 刷新「未应用变更」徽标：编辑器当前配置与最近一次应用快照不一致即为已变更。 */
+function updateDirtyBadge() {
+  if (!editorHandle || appliedSnapshot === null) {
+    el.badgeDirty.textContent = '配置同步中…';
+    el.badgeDirty.className = 'badge';
+    return;
+  }
+  const dirty = JSON.stringify(editorHandle.getConfig()) !== JSON.stringify(appliedSnapshot);
+  el.badgeDirty.textContent = dirty ? '有未应用变更' : '配置已同步';
+  el.badgeDirty.className = dirty ? 'badge warn' : 'badge ok';
 }
 
 /**
@@ -601,19 +608,7 @@ function setBusy(btn, busy) {
 
 /* ============================ 配置编辑器集成（内嵌真实产物） ============================ */
 
-/** 切换编辑器折叠态（首次展开时惰性创建编辑器）。 */
-function toggleEditor() {
-  const willOpen = el.editorBody.hidden;
-  el.editorBody.hidden = !willOpen;
-  el.btnEditorToggle.textContent = willOpen ? '收起' : '展开';
-  el.btnEditorToggle.setAttribute('aria-expanded', String(willOpen));
-  if (willOpen) {
-    ensureEditor();
-    el.editorBody.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-}
-
-/** 惰性创建编辑器（一次），并启动草稿轮询检测变更。 */
+/** 在主内容区创建真实编辑器（常驻单例）；创建后以编辑器为配置单一来源。 */
 function ensureEditor() {
   if (editorHandle) return;
   if (!api) {
@@ -621,58 +616,27 @@ function ensureEditor() {
     toast('error', '编辑器不可用', '请先加载构建产物。');
     return;
   }
-  editorHandle = api.mountEditor(el.editorHost, buildBaseConfig(), mockHass);
-  log('ok', '配置编辑器已创建（内嵌真实产物，与 HA 环境一致）');
-
-  // 轮询检测草稿变更（编辑器内部 emit 防抖 300ms，轮询 500ms 足够及时）
-  window.setInterval(() => {
-    if (!editorHandle) return;
-    const current = editorHandle.getConfig();
-    if (JSON.stringify(current) !== JSON.stringify(editorDraft)) {
-      if (editorDebounceTimer !== undefined) window.clearTimeout(editorDebounceTimer);
-      editorDebounceTimer = window.setTimeout(() => {
-        editorDraft = current;
-        syncPreview(current);
-        if (!editorDirty) {
-          editorDirty = true;
-          el.editorDirty.hidden = false;
-          log('info', '编辑器草稿已变更（标记「有未应用变更」）');
-        }
-      }, 400);
-    }
-  }, 500);
-}
-
-/** 初始化中间「阅览画布」（完整屏保预览，编辑态）。 */
-function initPreview() {
-  if (!api || previewHandle) return;
-  previewHandle = api.mountScreensaverPreview(el.previewCanvas, buildBaseConfig(), mockHass, { deviceId: 'dev-preview' });
-  log('ok', '阅览画布已挂载（完整屏保预览，编辑态）');
+  const initial = buildBaseConfig();
+  editorHandle = api.mountEditor(el.editorHost, initial, mockHass);
+  // 与 HA 一致：编辑器配置变化（config-changed）即回填给运行中的面板元素，无需手动「重新应用」
+  el.editorHost.addEventListener('config-changed', handleEditorConfigChanged);
+  // 初始基线：编辑器未被改动时视为「已同步」
+  appliedSnapshot = initial;
+  log('ok', '配置编辑器已内嵌（左工具栏 / 中预览画布 / 右属性面板）');
+  updateDirtyBadge();
 }
 
 /**
- * 热更新阅览画布配置（随控制面板 / 编辑器草稿变化实时刷新）。
- * @param {SnoozeConfig} config
+ * 编辑器配置变化（config-changed）→ 热推给运行中的运行时。
+ * 与 HA 行为一致：HA 收到 config-changed 后会把新配置回填给卡片元素的 setConfig；
+ * 本地实测台编辑器与面板元素相互独立，故在此显式桥接，
+ * 避免「编辑后触发屏保仍是默认布局/颜色」。
  */
-function syncPreview(config) {
-  if (previewHandle) previewHandle.update(config);
-}
-
-/** 重新应用配置：卸载 + 按最新配置重挂（优先编辑器草稿，其次控制面板）。 */
-function reapplyConfig() {
-  const useDraft = editorDirty && editorDraft !== null;
-  const config = useDraft && editorDraft ? editorDraft : buildBaseConfig();
-  const ok = mountRuntime(config, true);
-  if (!ok) return;
-  syncPreview(config);
-  if (useDraft) {
-    editorDirty = false;
-    editorDraft = null;
-    el.editorDirty.hidden = true;
-  }
-  const source = useDraft ? '编辑器草稿' : '控制面板当前选项';
-  log('ok', '配置已重新应用（来源：' + source + '）');
-  toast('success', '配置已重新应用', '来源：' + source);
+function handleEditorConfigChanged() {
+  const config = currentConfig();
+  appliedSnapshot = config;
+  if (panelEl) panelEl.setConfig({ snoozepanel: config });
+  updateDirtyBadge();
 }
 
 /* ============================ mock 后端设备列表 ============================ */
@@ -730,36 +694,10 @@ async function deleteDevice(id) {
 
 /* ============================ 事件绑定与启动 ============================ */
 
-/** 绑定闲置时长档位与自定义输入（两者互相同步）。 */
-function bindIdleControls() {
-  for (const chip of el.idleChips.querySelectorAll('.chip-btn')) {
-    if (!(chip instanceof HTMLElement)) continue;
-    chip.addEventListener('click', () => {
-      const value = Number(chip.dataset.idle);
-      if (!Number.isFinite(value)) return;
-      el.idleCustom.value = String(value);
-      syncIdleChips();
-      log('info', '闲置时长设为 ' + value + ' 秒（下次挂载生效）');
-    });
-  }
-  el.idleCustom.addEventListener('change', () => {
-    el.idleCustom.value = String(clampIdle(Number(el.idleCustom.value)));
-    syncIdleChips();
-  });
-}
-
-/** 按自定义输入值高亮匹配的档位按钮。 */
-function syncIdleChips() {
-  const value = el.idleCustom.value;
-  for (const chip of el.idleChips.querySelectorAll('.chip-btn')) {
-    if (!(chip instanceof HTMLElement)) continue;
-    chip.classList.toggle('active', chip.dataset.idle === value);
-  }
-}
-
 /** 注册所有事件监听（含全局异常入日志）。 */
 function bindEvents() {
   el.btnMount.addEventListener('click', handleMountClick);
+  el.btnReapply.addEventListener('click', handleReapplyClick);
   el.btnTrigger.addEventListener('click', handleTriggerClick);
   el.btnExit.addEventListener('click', handleExitClick);
   el.btnUnmount.addEventListener('click', handleUnmountClick);
@@ -767,9 +705,6 @@ function bindEvents() {
     setBusy(el.btnReloadBundle, true);
     void loadBundle().finally(() => setBusy(el.btnReloadBundle, false));
   });
-  bindIdleControls();
-  el.btnEditorToggle.addEventListener('click', toggleEditor);
-  el.btnReapply.addEventListener('click', reapplyConfig);
   el.btnRefreshDevices.addEventListener('click', () => { void refreshDeviceList(); });
   el.btnClearLog.addEventListener('click', () => {
     el.logList.innerHTML = '';
@@ -790,14 +725,14 @@ function bindEvents() {
   window.addEventListener('keydown', markInput, true);
 }
 
-/** 启动：初始禁用 → 加载产物 → 初始化设备列表 → 状态轮询。 */
+/** 启动：初始禁用 → 加载产物 → 内嵌编辑器 → 初始化设备列表 → 状态轮询。 */
 async function bootstrap() {
   // PrimeVue 深色主题（编辑器内部组件跟随；与实测台整体风格一致）
   document.documentElement.classList.add('snooze-editor-dark');
   updateActionButtons();
   log('info', '本地实测台启动：mock hass + mock 后端已就绪');
   await loadBundle();
-  initPreview();
+  ensureEditor();
   await refreshDeviceList();
   window.setInterval(updateRuntimeStatus, 250);
   updateRuntimeStatus();

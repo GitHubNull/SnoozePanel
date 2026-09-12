@@ -13,7 +13,7 @@ import { registerSnoozePanel } from './panel';
 import { registerSnoozePanelEditor } from './editor/editor';
 import { registerSnoozePanelSidebar } from './sidebar/sidebar';
 import { listFaceOptions, type FaceOption } from './ui/faces/registry';
-import { mountFacePreview, mountScreensaverPreview, type FacePreviewHandle, type FacePreviewOptions, type ScreensaverPreviewHandle, type ScreensaverPreviewOptions } from './runtime/preview';
+import { mountFacePreview, type FacePreviewHandle, type FacePreviewOptions } from './runtime/preview';
 import type { SnoozeConfig } from './core/types';
 import type { HassLike } from './core/hass';
 
@@ -40,8 +40,6 @@ interface SnoozePanelTestApi {
   listFaces(): FaceOption[];
   /** 在宿主元素内挂载表盘实时缩略预览（返回句柄用于热切换 / 卸载） */
   mountFacePreview(host: HTMLElement, faceId: string, opts?: FacePreviewOptions): FacePreviewHandle;
-  /** 在宿主元素内挂载完整屏保预览（编辑态，作阅览画布；返回句柄用于热更新 / 卸载） */
-  mountScreensaverPreview(host: HTMLElement, config: SnoozeConfig, hass: HassLike, opts?: ScreensaverPreviewOptions): ScreensaverPreviewHandle;
   /** 在宿主元素内挂载完整配置编辑器（dev 页用，返回句柄用于读取配置 / 卸载） */
   mountEditor(host: HTMLElement, config: SnoozeConfig, hass: HassLike): EditorHandle;
 }
@@ -105,7 +103,6 @@ function mountEditor(host: HTMLElement, config: SnoozeConfig, hass: HassLike): E
 window.SnoozePanelTestApi = Object.freeze({
   listFaces: listFaceOptions,
   mountFacePreview,
-  mountScreensaverPreview,
   mountEditor,
 } satisfies SnoozePanelTestApi);
 

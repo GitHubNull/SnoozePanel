@@ -75,6 +75,16 @@ describe('normalizeConfig 配置规范化', () => {
     expect(normalizeConfig({ components: { clock: { color: 'red' } } }).components.clock.color).toBe('red');
   });
 
+  it('裸 hex 自动补 #（PrimeVue ColorPicker 输出无 #）', () => {
+    // ColorPicker format="hex" 输出形如 175cd4 的裸 hex，配置层需补齐 '#' 才合法
+    expect(normalizeConfig({ components: { clock: { color: '175cd4' } } }).components.clock.color).toBe('#175cd4');
+    expect(normalizeConfig({ components: { clock: { color: 'fff' } } }).components.clock.color).toBe('#fff');
+    expect(normalizeConfig({ components: { clock: { color: 'ff0000ff' } } }).components.clock.color).toBe('#ff0000ff');
+    expect(normalizeConfig({ components: { clock: { color: '#175cd4' } } }).components.clock.color).toBe('#175cd4');
+    const c = normalizeConfig({ components: { texts: [{ content: 'x', color: '00ff00' }] } });
+    expect(c.components.texts[0].color).toBe('#00ff00');
+  });
+
   it('非法 color 回退 undefined', () => {
     expect(normalizeConfig({ components: { clock: { color: '' } } }).components.clock.color).toBeUndefined();
     expect(normalizeConfig({ components: { clock: { color: '  ' } } }).components.clock.color).toBeUndefined();

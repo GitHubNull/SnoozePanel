@@ -122,6 +122,9 @@ onBeforeUnmount(() => {
 .face-preview {
   position: relative;
   overflow: hidden;
+  /* 撑满调用方给定的容器（尺寸由宿主 CSS 决定），缩放比据此计算 */
+  width: 100%;
+  height: 100%;
   /* 预览纯展示，不拦截宿主交互（下拉选项点击等） */
   pointer-events: none;
 }

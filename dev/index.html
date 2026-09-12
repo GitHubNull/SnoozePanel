@@ -4,11 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SnoozePanel 本地实测台</title>
+  <!-- 内联空图标：抑制浏览器默认 /favicon.ico 请求，保证控制台零报错 -->
+  <link rel="icon" href="data:," />
   <!--
     本地实测台（静态服务器直开，无构建步骤）：
       python -m http.server 8765  →  http://127.0.0.1:8765/dev/
+
+    页面布局（设计软件式：上中下 + 左中右，整页占满视口，无水平留白）：
+      - 上（顶栏）：品牌 / 状态徽章 / 运行时操作（挂载·重新应用·触发·退出·卸载·重载产物）
+      - 中（主内容）：内嵌真实产物编辑器 snooze-panel-editor
+                     → 其内部即「左工具栏 / 中预览画布 / 右属性面板」三区
+      - 下（底栏）：运行日志 + mock 后端设备（Toast 走右上角浮层）
+
     逻辑全部在 dev/dev.js（// @ts-check + JSDoc，由 tsconfig.dev.json 做类型检查）。
-    配置编辑器直接内嵌真实产物（mountEditor），与 HA 环境完全一致。
+    配置编辑器直接内嵌真实产物（mountEditor），与 HA 环境完全一致，配置以编辑器为单一来源。
   -->
   <style>
     :root {
@@ -38,14 +47,16 @@
       color: var(--text);
       min-height: 100vh;
     }
+
+    /* ============ 上中下骨架：整页占满视口、无水平留白 ============ */
     .page { max-width: 100%; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* ============ 顶栏（上） ============ */
-    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 20px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    .brand h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: 0.3px; }
+    /* ============ 顶栏（上）：全局控件 ============ */
+    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .brand h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: 0.3px; }
     .brand h1 .dot { color: var(--accent); }
     .brand p { margin: 0; color: var(--dim); font-size: 13px; }
-    .topbar-right { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .topbar-right { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
     .badges { display: flex; flex-wrap: wrap; gap: 8px; }
     .badge {
       display: inline-flex; align-items: center; gap: 7px;
@@ -59,65 +70,21 @@
     .badge.error { color: var(--error); border-color: rgba(239, 107, 107, 0.4); }
     .badge.accent { color: var(--accent); border-color: rgba(94, 160, 255, 0.4); }
 
-    /* ============ 主内容区（中）：左中右布局 ============ */
-    .main-content { flex: 1; display: flex; overflow: hidden; min-height: 0; }
-    .sidebar-left { width: 280px; flex-shrink: 0; border-right: 1px solid var(--border); overflow-y: auto; background: var(--card); }
-    .canvas-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #000; min-width: 0; }
-    .sidebar-right { width: 360px; flex-shrink: 0; border-left: 1px solid var(--border); overflow-y: auto; background: var(--card); }
+    /* ============ 主内容区（中）：内嵌真实编辑器（左工具栏 / 中预览 / 右属性） ============ */
+    .main-content { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--card); }
+    .editor-host { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+    /* 自定义元素默认 inline，需显式撑满宿主，编辑器三区外壳才能铺满 */
+    .editor-host > snooze-panel-editor { display: block; flex: 1; min-width: 0; min-height: 0; }
 
-    /* ============ 底栏（下） ============ */
-    .bottombar { padding: 12px 20px; background: var(--card); border-top: 1px solid var(--border); max-height: 180px; overflow-y: auto; flex-shrink: 0; }
-
-    /* ============ 面板通用样式 ============ */
-    .panel-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
-    .panel-section:last-child { border-bottom: none; }
-    .panel-title { font-size: 14px; font-weight: 600; margin: 0 0 12px; color: var(--text); }
-    .panel-label { padding: 12px 14px; margin: 0; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); font-weight: 600; font-size: 13px; color: var(--dim); }
-    .component-list { padding: 8px; }
-    .component-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.15s; }
-    .component-item:hover { background: rgba(255,255,255,0.05); }
-    .component-item.active { background: var(--accent); color: #fff; }
-    .component-item.active .p-toggleswitch { filter: brightness(10); }
-    .component-name { font-size: 14px; font-weight: 500; }
-    .preview-canvas { flex: 1; position: relative; overflow: hidden; }
-    .props-panel { padding: 12px 14px; }
-
-    /* ============ 卡片与表单 ============ */
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22); }
-    .card h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; font-size: 15.5px; }
-    .card h2::before { content: ''; width: 4px; height: 15px; border-radius: 2px; background: var(--accent); }
-    .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-    .card-head h2 { margin: 0; }
-    .card-head + * { margin-top: 14px; }
-    .head-actions { display: flex; align-items: center; gap: 10px; }
-    .sub-card { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: var(--radius-sm); }
-    .sub-card h3 { margin: 0; font-size: 14px; }
-
-    /* ============ 表单控件 ============ */
-    .field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px; }
-    .field > label { font-size: 13px; color: var(--dim); }
-    select, input[type="number"] {
-      width: 100%; padding: 8px 10px;
-      background: var(--card-2); color: var(--text);
-      border: 1px solid var(--border); border-radius: 8px;
-      font-size: 13.5px; font-family: inherit;
-    }
-    select:focus, input:focus { outline: none; border-color: var(--accent); }
-    .inline-input { display: flex; align-items: center; gap: 10px; }
-    .inline-input input { width: 110px; flex: none; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chip-btn {
-      padding: 7px 14px; border-radius: 999px; font-family: inherit;
-      border: 1px solid var(--border); background: var(--card-2);
-      color: var(--dim); cursor: pointer; font-size: 13px;
-      transition: color 0.12s, border-color 0.12s;
-    }
-    .chip-btn:hover { color: var(--text); border-color: #3a4a63; }
-    .chip-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-    .chip { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; }
-    .chip.warn { color: var(--warn); background: rgba(232, 180, 90, 0.12); border: 1px solid rgba(232, 180, 90, 0.35); }
+    /* ============ 底栏（下）：运行日志 + mock 后端设备 ============ */
+    .bottombar { display: flex; gap: 20px; padding: 12px 20px; background: var(--card); border-top: 1px solid var(--border); flex-shrink: 0; max-height: 200px; }
+    .bottombar .log-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .bottombar .device-col { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; }
+    .bottombar .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .panel-title { font-size: 14px; font-weight: 600; margin: 0; color: var(--text); }
 
     /* ============ 按钮 ============ */
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       padding: 9px 16px; border: 0; border-radius: 8px;
@@ -138,8 +105,6 @@
       display: inline-block; animation: spin 0.7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
-    .hint { color: var(--dim); font-size: 12.5px; line-height: 1.65; margin: 10px 0 0; }
     .dim { color: var(--dim); font-size: 12.5px; }
     code { font-family: var(--mono); background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
 
@@ -147,7 +112,7 @@
     .log {
       list-style: none; margin: 0; padding: 10px 12px;
       background: #0a0d13; border: 1px solid var(--border); border-radius: var(--radius-sm);
-      max-height: 120px; overflow: auto;
+      flex: 1; min-height: 0; overflow: auto;
       font-family: var(--mono); font-size: 12.5px;
       display: flex; flex-direction: column; gap: 3px;
     }
@@ -158,6 +123,16 @@
     .log-line.ok .msg { color: var(--ok); }
     .log-line.warn .msg { color: var(--warn); }
     .log-line.error .msg { color: var(--error); }
+
+    /* ============ mock 后端设备列表 ============ */
+    .device-list {
+      list-style: none; margin: 0; padding: 10px 12px;
+      background: #0a0d13; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      flex: 1; min-height: 0; overflow: auto;
+      display: flex; flex-direction: column; gap: 8px; font-size: 13px;
+    }
+    .device-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .device-list li.dim { justify-content: flex-start; }
 
     /* ============ Toast（右上角） ============ */
     .toast-stack { position: fixed; top: 18px; right: 18px; z-index: 999; display: flex; flex-direction: column; gap: 10px; width: 320px; }
@@ -174,6 +149,13 @@
     .toast-detail { margin-top: 3px; font-size: 12.5px; color: var(--dim); }
     .toast.leave { opacity: 0; transform: translateX(14px); transition: opacity 0.22s, transform 0.22s; }
     @keyframes toast-in { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+
+    /* ============ 窄屏降级：三区改为纵向堆叠（HA 卡片编辑器等窄容器） ============ */
+    @media (max-width: 900px) {
+      .bottombar { flex-direction: column; max-height: none; }
+      .bottombar .device-col { width: auto; }
+      .log { max-height: 160px; }
+    }
   </style>
 </head>
 <body>
@@ -181,7 +163,7 @@
   <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
   <div class="page">
-    <!-- ============ 顶栏 ============ -->
+    <!-- ============ 顶栏（上）：全局控件 ============ -->
     <header class="topbar">
       <div class="brand">
         <h1>SnoozePanel <span class="dot">本地实测台</span></h1>
@@ -190,92 +172,44 @@
       <div class="topbar-right">
         <div class="badges">
           <span class="badge warn" id="badge-bundle">产物加载中…</span>
+          <span class="badge" id="badge-dirty">配置同步中…</span>
           <span class="badge ok" id="badge-backend">mock 后端就绪</span>
           <span class="badge" id="badge-runtime">未挂载</span>
         </div>
-        <button type="button" class="btn ghost small" id="btn-reload-bundle" hidden>重新加载产物</button>
+        <div class="actions">
+          <button type="button" class="btn" id="btn-mount" disabled>挂载运行时</button>
+          <button type="button" class="btn ghost" id="btn-reapply" disabled>重新应用配置</button>
+          <button type="button" class="btn" id="btn-trigger" disabled>触发屏保</button>
+          <button type="button" class="btn ghost" id="btn-exit" disabled>退出屏保</button>
+          <button type="button" class="btn ghost" id="btn-unmount" disabled>卸载运行时</button>
+          <button type="button" class="btn ghost small" id="btn-reload-bundle" hidden>重新加载产物</button>
+        </div>
       </div>
     </header>
 
-    <!-- ============ 主内容区（中）：左中右布局 ============ -->
+    <!-- ============ 主内容区（中）：内嵌真实编辑器（左工具栏 / 中预览画布 / 右属性面板） ============ -->
     <main class="main-content">
-      <!-- 左侧：控制面板 -->
-      <aside class="sidebar-left">
-        <div class="panel-section">
-          <h3 class="panel-title">屏保运行</h3>
-          <div class="field">
-            <label>闲置触发时长</label>
-            <div class="chips" id="idle-chips">
-              <button type="button" class="chip-btn" data-idle="5">5 秒</button>
-              <button type="button" class="chip-btn active" data-idle="15">15 秒</button>
-              <button type="button" class="chip-btn" data-idle="60">60 秒</button>
-              <button type="button" class="chip-btn" data-idle="180">3 分钟</button>
-            </div>
-            <div class="inline-input">
-              <input type="number" id="idle-custom" min="5" max="3600" step="1" value="15" aria-label="自定义闲置秒数" />
-              <span class="dim">秒（5–3600 自定义）</span>
-            </div>
-          </div>
-          <div class="actions">
-            <button type="button" class="btn" id="btn-mount" disabled>挂载运行时</button>
-            <button type="button" class="btn" id="btn-trigger" disabled>触发屏保</button>
-            <button type="button" class="btn ghost" id="btn-exit" disabled>退出屏保</button>
-            <button type="button" class="btn ghost" id="btn-unmount" disabled>卸载运行时</button>
-          </div>
-          <p class="hint">
-            触发/退出走生产同款 <code>screensaver_entity</code> 通路（<code>input_boolean.screensaver</code> + 重赋
-            <code>hass</code> → <code>syncFromEntity</code>）。控制面板选项在「挂载 / 重新应用」时写入运行时配置。
-          </p>
-        </div>
-      </aside>
-
-      <!-- 中间：预览画布 -->
-      <section class="canvas-center">
-        <div class="panel-label">阅览画布（实时预览屏保效果；拖拽调整位置请在右侧编辑器的显示组件中操作）</div>
-        <div class="preview-canvas" id="preview-canvas">
-          <!-- 屏保预览将挂载到这里 -->
-        </div>
-      </section>
-
-      <!-- 右侧：配置编辑器 -->
-      <aside class="sidebar-right">
-        <div class="panel-section">
-          <div class="card-head">
-            <h3 class="panel-title">配置编辑器</h3>
-            <div class="head-actions">
-              <span class="chip warn" id="editor-dirty" hidden>有未应用变更</span>
-              <button type="button" class="btn ghost small" id="btn-editor-toggle" aria-expanded="false" aria-controls="editor-body">展开</button>
-            </div>
-          </div>
-          <div id="editor-body" hidden>
-            <div class="editor-frame">
-              <div id="editor-host"></div>
-            </div>
-            <div class="actions">
-              <button type="button" class="btn" id="btn-reapply" disabled>重新应用配置</button>
-              <span class="dim">「保存为本设备配置」写入 mock 后端；「重新应用」卸载运行时后按最新配置重挂。</span>
-            </div>
-            <div class="sub-card">
-              <div class="card-head">
-                <h3>mock 后端已保存设备</h3>
-                <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
-              </div>
-              <ul class="device-list" id="device-list">
-                <li class="dim">尚未保存任何设备</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <div class="editor-host" id="editor-host"></div>
     </main>
 
-    <!-- ============ 底栏（下）：运行日志 ============ -->
+    <!-- ============ 底栏（下）：运行日志 + mock 后端设备 ============ -->
     <footer class="bottombar">
-      <div class="card-head">
-        <h3 class="panel-title">运行日志</h3>
-        <button type="button" class="btn ghost small" id="btn-clear-log">清空</button>
+      <div class="log-col">
+        <div class="card-head">
+          <h3 class="panel-title">运行日志</h3>
+          <button type="button" class="btn ghost small" id="btn-clear-log">清空</button>
+        </div>
+        <ul class="log" id="log"></ul>
       </div>
-      <ul class="log" id="log"></ul>
+      <div class="device-col">
+        <div class="card-head">
+          <h3 class="panel-title">mock 后端设备</h3>
+          <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
+        </div>
+        <ul class="device-list" id="device-list">
+          <li class="dim">尚未保存任何设备</li>
+        </ul>
+      </div>
     </footer>
   </div>
 

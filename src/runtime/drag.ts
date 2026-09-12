@@ -93,6 +93,8 @@ export function makeDraggable(el: HTMLElement, container: HTMLElement, cb: DragC
  * @param el 目标元素（position: absolute，width/height 百分比）
  * @param container 父容器
  * @param cb 回调
+ * @param lockAspect 等比模式：取水平/垂直位移中更大的一轴换算统一比例，宽高同步缩放
+ *                   （适合时钟等固定比例的组件）；默认 false 时宽高按各自轴向独立调整。
  * @returns 清理函数
  */
 export function makeResizable(
@@ -100,6 +102,7 @@ export function makeResizable(
   el: HTMLElement,
   container: HTMLElement,
   cb: ResizeCallbacks,
+  lockAspect = false,
 ): Cleanup {
   let startX = 0;
   let startY = 0;
@@ -122,11 +125,10 @@ export function makeResizable(
   const onPointerMove = (ev: PointerEvent): void => {
     if (!resizing) return;
     const rect = container.getBoundingClientRect();
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
-    const w = startW + (dx / rect.width) * 100;
-    const h = startH + (dy / rect.height) * 100;
-    cb.onResize(clamp(w, 5, 100), clamp(h, 5, 100));
+    const { w, h } = computeResize(
+      startW, startH, ev.clientX - startX, ev.clientY - startY, rect.width, rect.height, lockAspect,
+    );
+    cb.onResize(w, h);
   };
 
   const onPointerUp = (ev: PointerEvent): void => {
@@ -134,11 +136,10 @@ export function makeResizable(
     resizing = false;
     handle.releasePointerCapture(ev.pointerId);
     const rect = container.getBoundingClientRect();
-    const dx = ev.clientX - startX;
-    const dy = ev.clientY - startY;
-    const w = startW + (dx / rect.width) * 100;
-    const h = startH + (dy / rect.height) * 100;
-    cb.onEnd?.(clamp(w, 5, 100), clamp(h, 5, 100));
+    const { w, h } = computeResize(
+      startW, startH, ev.clientX - startX, ev.clientY - startY, rect.width, rect.height, lockAspect,
+    );
+    cb.onEnd?.(w, h);
   };
 
   handle.addEventListener('pointerdown', onPointerDown);
@@ -152,6 +153,47 @@ export function makeResizable(
     handle.removeEventListener('pointerup', onPointerUp);
     handle.removeEventListener('pointercancel', onPointerUp);
   };
+}
+
+/**
+ * 纯函数：根据拖拽位移（像素）计算缩放后的宽高（百分比），便于单测。
+ * - lockAspect=true：等比缩放，取水平/垂直位移中更大的一轴换算统一比例。
+ * - lockAspect=false：宽高分别按各自轴向位移独立调整。
+ * 两种模式下 startH≤0（高度自适应）时均返回 h=0，调用方应保持高度自适应；
+ * 宽度与非自适应的高度统一裁剪到 [5, 100]。
+ * @param startW 起始宽度百分比
+ * @param startH 起始高度百分比（0 表示高度自适应）
+ * @param dx 水平位移像素
+ * @param dy 垂直位移像素
+ * @param rectW 容器宽度像素
+ * @param rectH 容器高度像素
+ * @param lockAspect 是否等比缩放
+ */
+export function computeResize(
+  startW: number,
+  startH: number,
+  dx: number,
+  dy: number,
+  rectW: number,
+  rectH: number,
+  lockAspect = false,
+): { w: number; h: number } {
+  const safeW = rectW > 0 ? rectW : 1;
+  const safeH = rectH > 0 ? rectH : 1;
+  if (lockAspect) {
+    const rx = dx / safeW;
+    const ry = dy / safeH;
+    const r = Math.abs(rx) >= Math.abs(ry) ? rx : ry;
+    const factor = 1 + r;
+    return {
+      w: clamp(startW * factor, 5, 100),
+      h: startH > 0 ? clamp(startH * factor, 5, 100) : 0,
+    };
+  }
+  const w = clamp(startW + (dx / safeW) * 100, 5, 100);
+  // 高度自适应（startH≤0）时保持 h=0，不因缩放而强制写入高度
+  const h = startH > 0 ? clamp(startH + (dy / safeH) * 100, 5, 100) : 0;
+  return { w, h };
 }
 
 function clamp(v: number, min: number, max: number): number {

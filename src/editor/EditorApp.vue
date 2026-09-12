@@ -1,19 +1,16 @@
 <script setup lang="ts">
-import { reactive, watch, computed, ref, nextTick, provide } from 'vue';
+import { reactive, watch, computed, ref, nextTick, provide, onMounted, onBeforeUnmount } from 'vue';
 import type { SnoozeConfig, ComponentLayout } from '@/core/types';
 import type { HassLike } from '@/core/hass';
 import { listFaceOptions } from '@/ui/faces/registry';
 import { saveDeviceConfig } from '@/core/store';
+import { attachHexHash } from '@/core/config';
 import { resolveDeviceId } from '@/core/device';
 import FacePreview from '@/ui/components/FacePreview.vue';
 import FaceMarketplace from './FaceMarketplace.vue';
+import { Ticker } from '@/runtime/ticker';
 import Toast from 'primevue/toast';
 import { useToast } from 'primevue/usetoast';
-import Tabs from 'primevue/tabs';
-import TabList from 'primevue/tablist';
-import Tab from 'primevue/tab';
-import TabPanels from 'primevue/tabpanels';
-import TabPanel from 'primevue/tabpanel';
 import ToggleSwitch from 'primevue/toggleswitch';
 import InputNumber from 'primevue/inputnumber';
 import InputText from 'primevue/inputtext';
@@ -45,6 +42,26 @@ const previewState = reactive({
   hass: props.hass ?? ({ states: {} } as HassLike),
 });
 provide('snoozeState', previewState);
+
+// 预览画布时钟：每秒推进一次（后台标签页自动暂停），卸载时停表
+const previewTicker = new Ticker((now) => {
+  previewState.now = now;
+});
+onMounted(() => {
+  previewTicker.start();
+  previewTicker.watchVisibility();
+});
+onBeforeUnmount(() => {
+  previewTicker.destroy();
+});
+
+// HA 侧异步注入 hass：变化时同步给预览画布
+watch(
+  () => props.hass,
+  (next) => {
+    previewState.hass = next ?? ({ states: {} } as HassLike);
+  },
+);
 
 // 预览画布设备 id（仅用于展示，不影响逻辑）
 const previewDeviceId = resolveDeviceId();
@@ -284,12 +301,27 @@ const componentTemplatesModel = computed<string>({
 const selectedComponent = ref<string>('clock');
 
 const componentList = computed(() => [
-  { key: 'clock', label: '时钟', show: draft.components.clock.show },
-  { key: 'calendar', label: '日历', show: draft.components.calendar.show },
-  { key: 'lunar', label: '农历', show: draft.components.lunar.show },
-  { key: 'weather', label: '天气', show: draft.components.weather.show },
-  { key: 'texts', label: '自定义文本', show: draft.components.texts.length > 0 },
+  { key: 'clock', label: '时钟', show: draft.components.clock.show, toggleable: true },
+  { key: 'calendar', label: '日历', show: draft.components.calendar.show, toggleable: true },
+  { key: 'lunar', label: '农历', show: draft.components.lunar.show, toggleable: true },
+  { key: 'weather', label: '天气', show: draft.components.weather.show, toggleable: true },
+  { key: 'texts', label: '自定义文本', show: draft.components.texts.length > 0, toggleable: false },
 ]);
+
+/** 当前选中组件的中文名（右侧属性面板标题） */
+const selectedLabel = computed(
+  () => componentList.value.find((c) => c.key === selectedComponent.value)?.label ?? '',
+);
+
+/** 组件显隐开关（texts 无独立开关，忽略） */
+function setComponentShow(key: string, value: boolean): void {
+  switch (key) {
+    case 'clock': draft.components.clock.show = value; break;
+    case 'calendar': draft.components.calendar.show = value; break;
+    case 'lunar': draft.components.lunar.show = value; break;
+    case 'weather': draft.components.weather.show = value; break;
+  }
+}
 
 /** 当前选中组件的 layout */
 const currentLayout = computed<ComponentLayout>({
@@ -335,7 +367,9 @@ const currentColor = computed<string>({
 });
 
 function setCurrentColor(v: string): void {
-  currentColor.value = v;
+  // ColorPicker（format=hex）输出不带 '#' 的裸 hex（如 175cd4），补 '#' 后才是合法 CSS；
+  // 否则配置层 normalizeColor 会判为非法而丢弃，表现为「改不了颜色」。
+  currentColor.value = attachHexHash(String(v ?? ''));
 }
 
 // ---- 布局编辑辅助 ----
@@ -359,285 +393,216 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
 </script>
 
 <template>
-  <div class="snooze-editor">
+  <div class="design-shell">
     <!-- 保存等操作反馈的 Toast 容器（底部右侧，自动消失） -->
     <Toast position="bottom-right" />
 
-    <header class="editor-header">
-      <h2>SnoozePanel 屏保设置</h2>
-      <p class="hint">配置将写入当前视图的 <code>snoozepanel:</code> 段。未配置屏保的视图不受影响。</p>
-    </header>
+    <!-- ============ 左：功能工具栏（所有控制开关与配置） ============ -->
+    <aside class="shell-tools">
+      <div class="tools-scroll">
+        <!-- 总开关 -->
+        <div class="tool-master">
+          <span class="tool-master-label">启用屏保</span>
+          <ToggleSwitch v-model="draft.enabled" />
+        </div>
 
-    <div class="field master-switch">
-      <label>启用屏保</label>
-      <ToggleSwitch v-model="draft.enabled" />
-    </div>
-
-    <Tabs value="basic">
-      <TabList>
-        <Tab value="basic">基础</Tab>
-        <Tab value="devices">设备范围</Tab>
-        <Tab value="conditions">生效条件</Tab>
-        <Tab value="components">显示组件</Tab>
-        <Tab value="background">背景</Tab>
-        <Tab value="advanced">高级</Tab>
-      </TabList>
-      <TabPanels>
-      <!-- ============ 基础 ============ -->
-      <TabPanel value="basic">
-        <div class="field">
-          <label>闲置触发时长（秒）</label>
-          <InputNumber v-model="draft.idle_seconds" :min="5" :max="3600" show-buttons />
-          <small>无触摸/按键操作多少秒后进入屏保</small>
-        </div>
-        <div class="field">
-          <label>退出冷却（秒）</label>
-          <InputNumber v-model="draft.exit_cooldown_seconds" :min="0" :max="30" show-buttons />
-          <small>进入屏保后短暂忽略触摸，防误触退出</small>
-        </div>
-        <div class="field">
-          <label>主题</label>
-          <Select v-model="draft.theme" :options="THEMES" option-label="label" option-value="value" class="w-full" />
-        </div>
-        <div class="field">
-          <label>远程控制实体（input_boolean，可选）</label>
-          <InputText v-model="screensaverEntityModel" placeholder="input_boolean.screensaver" class="w-full" />
-          <small>置 on 强制进入屏保，触摸退出时自动复位为 off</small>
-        </div>
-      </TabPanel>
-
-      <!-- ============ 设备范围 ============ -->
-      <TabPanel value="devices">
-        <div class="field">
-          <label>按设备限制</label>
-          <ToggleSwitch v-model="deviceModeEnabled" />
-          <small>开启后仅指定设备生效/屏蔽。设备 id 显示在屏保右下角，或用 ?snooze_device=xxx 指定</small>
-        </div>
-        <template v-if="draft.devices">
+        <!-- 基础 -->
+        <section class="tool-section">
+          <h4 class="tool-title">基础</h4>
           <div class="field">
-            <label>名单模式</label>
-            <Select v-model="draft.devices.mode" :options="DEVICE_MODES" option-label="label" option-value="value" class="w-full" />
+            <label>闲置触发时长（秒）</label>
+            <InputNumber v-model="draft.idle_seconds" :min="5" :max="3600" show-buttons />
+            <small>无触摸/按键操作多少秒后进入屏保</small>
           </div>
           <div class="field">
-            <label>设备 id 列表（逗号分隔）</label>
-            <Textarea v-model="deviceListText" rows="3" class="w-full" placeholder="dev-abc123, pad-kitchen" />
-          </div>
-        </template>
-      </TabPanel>
-
-      <!-- ============ 生效条件 ============ -->
-      <TabPanel value="conditions">
-        <p class="hint">以下条件为「与」关系，全部满足才会进入屏保；屏保中条件失效会立即退出。</p>
-
-        <EntityConditionsForm v-model="draft.conditions.entity" :hass="hass" />
-
-        <div class="field">
-          <label>时间段限制</label>
-          <ToggleSwitch v-model="timeEnabled" />
-        </div>
-        <template v-if="draft.conditions.time">
-          <div class="field-row">
-            <div class="field">
-              <label>晚于（HH:mm）</label>
-              <InputText v-model="draft.conditions.time.after" placeholder="21:00" class="w-full" />
-            </div>
-            <div class="field">
-              <label>早于（HH:mm）</label>
-              <InputText v-model="draft.conditions.time.before" placeholder="07:00" class="w-full" />
-            </div>
+            <label>退出冷却（秒）</label>
+            <InputNumber v-model="draft.exit_cooldown_seconds" :min="0" :max="30" show-buttons />
+            <small>进入屏保后短暂忽略触摸，防误触退出</small>
           </div>
           <div class="field">
-            <label>限定星期（不选=每天）</label>
-            <div class="weekday-chips">
-              <Chip
-                v-for="w in WEEKDAYS"
-                :key="w.value"
-                :label="w.label"
-                :class="{ active: weekdaySelection.includes(w.value) }"
-                @click="toggleWeekday(w.value)"
+            <label>主题</label>
+            <Select v-model="draft.theme" :options="THEMES" option-label="label" option-value="value" class="w-full" />
+          </div>
+          <div class="field">
+            <label>远程控制实体（input_boolean，可选）</label>
+            <InputText v-model="screensaverEntityModel" placeholder="input_boolean.screensaver" class="w-full" />
+            <small>置 on 强制进入屏保，触摸退出时自动复位为 off</small>
+          </div>
+        </section>
+
+        <!-- 表盘 -->
+        <section class="tool-section">
+          <h4 class="tool-title">表盘</h4>
+          <div class="face-selector-card" @click="openMarketplace">
+            <div class="face-selector-preview">
+              <FacePreview
+                :face-id="draft.components.clock.style"
+                :theme="draft.theme"
+                :seconds="draft.components.clock.seconds"
+                :hour24="draft.components.clock.hour24"
+                :zoom="1.2"
               />
             </div>
-          </div>
-        </template>
-
-        <div class="field">
-          <label>日出日落限制</label>
-          <ToggleSwitch v-model="sunEnabled" />
-        </div>
-        <template v-if="draft.conditions.sun">
-          <div class="field">
-            <label>日落后偏移（分钟，可负）</label>
-            <InputNumber v-model="draft.conditions.sun.after_sunset_offset" :min="-180" :max="720" show-buttons />
-            <small>例如 30 表示日落后 30 分钟才允许进入屏保</small>
-          </div>
-          <div class="field">
-            <label>日出前偏移（分钟）</label>
-            <InputNumber v-model="draft.conditions.sun.before_sunrise_offset" :min="-180" :max="720" show-buttons />
-          </div>
-        </template>
-      </TabPanel>
-
-      <!-- ============ 显示组件（设计器布局：左组件列表 + 中预览画布 + 右属性面板） ============ -->
-      <TabPanel value="components">
-        <div class="designer-layout">
-          <!-- 左侧：组件列表 -->
-          <div class="designer-left">
-            <label class="panel-label">组件列表</label>
-            <div class="component-list">
-              <div
-                v-for="comp in componentList"
-                :key="comp.key"
-                class="component-item"
-                :class="{ active: selectedComponent === comp.key }"
-                @click="selectedComponent = comp.key"
-              >
-                <ToggleSwitch
-                  :model-value="comp.show"
-                  @update:model-value="comp.show = $event"
-                  @click.stop
-                />
-                <span class="component-name">{{ comp.label }}</span>
-              </div>
+            <div class="face-selector-info">
+              <span class="face-selector-name">{{ faceLabel(draft.components.clock.style) }}</span>
+              <span class="face-selector-action">点击进入表盘市场</span>
             </div>
           </div>
+          <div class="inline-row">
+            <label>24 小时制</label>
+            <ToggleSwitch v-model="draft.components.clock.hour24" />
+          </div>
+          <div class="inline-row">
+            <label>显示秒</label>
+            <ToggleSwitch v-model="draft.components.clock.seconds" />
+          </div>
+        </section>
 
-          <!-- 中间：预览画布 -->
-          <div class="designer-center">
-            <label class="panel-label">预览画布（拖拽调整位置，拖拽手柄调整尺寸）</label>
-            <div class="preview-canvas">
-              <ScreensaverApp
-                :config="draft"
-                :device-id="previewDeviceId"
-                edit-mode
-                @update:layout="updateComponentLayout"
+        <!-- 背景 -->
+        <section class="tool-section">
+          <h4 class="tool-title">背景</h4>
+          <div class="field">
+            <label>背景类型</label>
+            <Select v-model="draft.background.type" :options="BG_TYPES" option-label="label" option-value="value" class="w-full" />
+          </div>
+          <div v-if="draft.background.type === 'color'" class="field">
+            <label>颜色</label>
+            <InputText v-model="draft.background.color" class="w-full" placeholder="#0b1020" />
+          </div>
+          <template v-if="draft.background.type === 'gradient'">
+            <div class="field"><label>起始色</label><InputText v-model="draft.background.gradient.from" class="w-full" /></div>
+            <div class="field"><label>结束色</label><InputText v-model="draft.background.gradient.to" class="w-full" /></div>
+            <div class="field">
+              <label>角度（{{ draft.background.gradient.angle }}°）</label>
+              <Slider v-model="draft.background.gradient.angle" :min="0" :max="360" />
+            </div>
+          </template>
+          <template v-if="draft.background.type === 'image'">
+            <div class="field">
+              <label>图片地址（每行一张，多张轮播）</label>
+              <Textarea v-model="imagesText" rows="4" class="w-full" placeholder="/local/bg1.jpg&#10;/local/bg2.jpg" />
+            </div>
+            <div class="field">
+              <label>轮播间隔（秒）</label>
+              <InputNumber v-model="draft.background.interval_seconds" :min="3" :max="600" show-buttons />
+            </div>
+          </template>
+          <div class="field">
+            <label>暗化遮罩（{{ Math.round(draft.background.dim * 100) }}%）</label>
+            <Slider v-model="draft.background.dim" :min="0" :max="1" :step="0.05" />
+          </div>
+        </section>
+
+        <!-- 组件显隐 -->
+        <section class="tool-section">
+          <h4 class="tool-title">组件显隐</h4>
+          <p class="tool-hint">点击选中组件，在右侧编辑其位置 / 尺寸 / 颜色</p>
+          <div class="component-list">
+            <div
+              v-for="comp in componentList"
+              :key="comp.key"
+              class="component-item"
+              :class="{ active: selectedComponent === comp.key }"
+              @click="selectedComponent = comp.key"
+            >
+              <ToggleSwitch
+                v-if="comp.toggleable"
+                :model-value="comp.show"
+                @update:model-value="setComponentShow(comp.key, $event)"
+                @click.stop
               />
+              <span class="component-name">{{ comp.label }}</span>
             </div>
           </div>
+        </section>
 
-          <!-- 右侧：属性面板 -->
-          <div class="designer-right">
-            <label class="panel-label">属性设置</label>
-            <div class="props-panel">
-              <!-- 时钟属性 -->
-              <template v-if="selectedComponent === 'clock'">
-                <div class="field">
-                  <label>表盘</label>
-                  <div class="face-selector-card" @click="openMarketplace">
-                    <div class="face-selector-preview">
-                      <FacePreview
-                        :face-id="draft.components.clock.style"
-                        :theme="draft.theme"
-                        :seconds="draft.components.clock.seconds"
-                        :hour24="draft.components.clock.hour24"
-                        :zoom="1.2"
-                      />
-                    </div>
-                    <div class="face-selector-info">
-                      <span class="face-selector-name">{{ faceLabel(draft.components.clock.style) }}</span>
-                      <span class="face-selector-action">点击更换表盘</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="field-row">
-                  <div class="field inline"><label>24 小时制</label><ToggleSwitch v-model="draft.components.clock.hour24" /></div>
-                  <div class="field inline"><label>显示秒</label><ToggleSwitch v-model="draft.components.clock.seconds" /></div>
-                </div>
-              </template>
-
-              <!-- 日历属性 -->
-              <template v-if="selectedComponent === 'calendar'">
-                <div class="field-row">
-                  <div class="field">
-                    <label>周起始日</label>
-                    <Select v-model="draft.components.calendar.week_start"
-                      :options="[{label:'周一',value:1},{label:'周日',value:0}]"
-                      option-label="label" option-value="value" class="w-full" />
-                  </div>
-                </div>
-                <div class="field">
-                  <label>日期格式模板</label>
-                  <InputText v-model="draft.components.calendar.format" class="w-full" placeholder="M月D日 dddd" />
-                  <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
-                </div>
-                <div class="field inline"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
-              </template>
-
-              <!-- 农历属性 -->
-              <template v-if="selectedComponent === 'lunar'">
-                <div class="field">
-                  <label>格式模板</label>
-                  <InputText v-model="draft.components.lunar.format" class="w-full" placeholder="{lunar_month}{lunar_day}" />
-                  <small>占位符：{'{lunar_month}'} 月 / {'{lunar_day}'} 日 / {'{ganzhi}'} 干支 / {'{zodiac}'} 生肖</small>
-                </div>
-              </template>
-
-              <!-- 天气属性 -->
-              <template v-if="selectedComponent === 'weather'">
-                <div class="field">
-                  <label>天气实体</label>
-                  <Select v-model="draft.components.weather.entity" :options="weatherEntities" editable class="w-full" placeholder="weather.home" />
-                </div>
-              </template>
-
-              <!-- 文本属性 -->
-              <template v-if="selectedComponent === 'texts'">
-                <TextsForm v-model="draft.components.texts" />
-              </template>
-
-              <!-- 通用：布局编辑 -->
-              <div class="layout-section">
-                <label class="layout-label">布局</label>
-                <div class="layout-inputs">
-                  <div class="layout-input">
-                    <span>X</span>
-                    <InputNumber v-model="currentLayout.x" :min="0" :max="100" suffix="%" />
-                  </div>
-                  <div class="layout-input">
-                    <span>Y</span>
-                    <InputNumber v-model="currentLayout.y" :min="0" :max="100" suffix="%" />
-                  </div>
-                  <div class="layout-input">
-                    <span>宽</span>
-                    <InputNumber v-model="currentLayout.w" :min="5" :max="100" suffix="%" />
-                  </div>
-                  <div class="layout-input">
-                    <span>高</span>
-                    <InputNumber v-model="currentLayout.h" :min="0" :max="100" suffix="%" placeholder="自适应" />
-                  </div>
-                </div>
-              </div>
-
-              <!-- 通用：字体颜色 -->
+        <!-- 生效条件 -->
+        <section class="tool-section">
+          <h4 class="tool-title">生效条件</h4>
+          <p class="tool-hint">以下条件为「与」关系，全部满足才会进入屏保；屏保中条件失效会立即退出。</p>
+          <EntityConditionsForm v-model="draft.conditions.entity" :hass="hass" />
+          <div class="inline-row">
+            <label>时间段限制</label>
+            <ToggleSwitch v-model="timeEnabled" />
+          </div>
+          <template v-if="draft.conditions.time">
+            <div class="field-row">
               <div class="field">
-                <label>字体颜色（可选）</label>
-                <div class="color-row">
-                  <ColorPicker
-                    :model-value="currentColor"
-                    format="hex"
-                    @update:model-value="setCurrentColor(String($event ?? ''))"
-                  />
-                  <InputText
-                    :model-value="currentColor"
-                    placeholder="留空用主题色"
-                    class="color-input"
-                    @update:model-value="setCurrentColor(String($event ?? ''))"
-                  />
-                  <Button
-                    v-if="currentColor"
-                    label="清除"
-                    size="small"
-                    text
-                    @click="setCurrentColor('')"
-                  />
-                </div>
+                <label>晚于（HH:mm）</label>
+                <InputText v-model="draft.conditions.time.after" placeholder="21:00" class="w-full" />
+              </div>
+              <div class="field">
+                <label>早于（HH:mm）</label>
+                <InputText v-model="draft.conditions.time.before" placeholder="07:00" class="w-full" />
               </div>
             </div>
+            <div class="field">
+              <label>限定星期（不选=每天）</label>
+              <div class="weekday-chips">
+                <Chip
+                  v-for="w in WEEKDAYS"
+                  :key="w.value"
+                  :label="w.label"
+                  :class="{ active: weekdaySelection.includes(w.value) }"
+                  @click="toggleWeekday(w.value)"
+                />
+              </div>
+            </div>
+          </template>
+          <div class="inline-row">
+            <label>日出日落限制</label>
+            <ToggleSwitch v-model="sunEnabled" />
           </div>
-        </div>
+          <template v-if="draft.conditions.sun">
+            <div class="field">
+              <label>日落后偏移（分钟，可负）</label>
+              <InputNumber v-model="draft.conditions.sun.after_sunset_offset" :min="-180" :max="720" show-buttons />
+            </div>
+            <div class="field">
+              <label>日出前偏移（分钟）</label>
+              <InputNumber v-model="draft.conditions.sun.before_sunrise_offset" :min="-180" :max="720" show-buttons />
+            </div>
+          </template>
+        </section>
 
-        <!-- 设备级覆盖（后端持久化） -->
-        <fieldset>
-          <legend>设备级覆盖</legend>
+        <!-- 设备范围 -->
+        <section class="tool-section">
+          <h4 class="tool-title">设备范围</h4>
+          <div class="inline-row">
+            <label>按设备限制</label>
+            <ToggleSwitch v-model="deviceModeEnabled" />
+          </div>
+          <template v-if="draft.devices">
+            <div class="field">
+              <label>名单模式</label>
+              <Select v-model="draft.devices.mode" :options="DEVICE_MODES" option-label="label" option-value="value" class="w-full" />
+            </div>
+            <div class="field">
+              <label>设备 id 列表（逗号分隔）</label>
+              <Textarea v-model="deviceListText" rows="3" class="w-full" placeholder="dev-abc123, pad-kitchen" />
+            </div>
+          </template>
+        </section>
+
+        <!-- 高级 -->
+        <section class="tool-section">
+          <h4 class="tool-title">高级</h4>
+          <div class="field">
+            <label>整体显隐表达式（display_template）</label>
+            <Textarea v-model="displayTemplateModel" rows="3" class="w-full code"
+              placeholder="states['binary_sensor.someone_home'].state === 'on'" />
+            <small>JS 表达式，可用变量：hass、states、user。出错时默认显示。</small>
+          </div>
+          <div class="field">
+            <label>单组件显隐表达式（JSON，可选）</label>
+            <Textarea v-model="componentTemplatesModel" rows="4" class="w-full code"
+              placeholder='{"clock": "user.is_admin", "weather": "true"}' />
+          </div>
+        </section>
+
+        <!-- 设备级覆盖 -->
+        <section class="tool-section">
+          <h4 class="tool-title">设备级覆盖</h4>
           <div class="field">
             <label>当前设备 id</label>
             <div class="device-id-text">{{ deviceId }}</div>
@@ -647,68 +612,123 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
             <Button :loading="deviceSaving" label="保存为本设备配置" @click="onSaveDevice" />
             <span v-if="deviceSaved" class="save-hint">{{ deviceSaved }}</span>
           </div>
-        </fieldset>
-      </TabPanel>
+        </section>
+      </div>
+    </aside>
 
-      <!-- ============ 背景 ============ -->
-      <TabPanel value="background">
-        <div class="field">
-          <label>背景类型</label>
-          <Select v-model="draft.background.type" :options="BG_TYPES" option-label="label" option-value="value" class="w-full" />
-        </div>
-        <div v-if="draft.background.type === 'color'" class="field">
-          <label>颜色</label>
-          <InputText v-model="draft.background.color" class="w-full" placeholder="#0b1020" />
-        </div>
-        <template v-if="draft.background.type === 'gradient'">
-          <div class="field-row">
-            <div class="field"><label>起始色</label><InputText v-model="draft.background.gradient.from" class="w-full" /></div>
-            <div class="field"><label>结束色</label><InputText v-model="draft.background.gradient.to" class="w-full" /></div>
+    <!-- ============ 中：预览画布（纯实时预览，可拖拽/缩放） ============ -->
+    <main class="shell-canvas">
+      <ScreensaverApp
+        :config="draft"
+        :device-id="previewDeviceId"
+        edit-mode
+        @update:layout="updateComponentLayout"
+      />
+    </main>
+
+    <!-- ============ 右：属性面板（选中组件详细属性） ============ -->
+    <aside class="shell-props">
+      <div class="props-head">
+        <span class="props-title">属性设置</span>
+        <span class="props-subject">{{ selectedLabel }}</span>
+      </div>
+      <div class="props-scroll">
+        <!-- 时钟属性 -->
+        <template v-if="selectedComponent === 'clock'">
+          <div class="inline-row"><label>24 小时制</label><ToggleSwitch v-model="draft.components.clock.hour24" /></div>
+          <div class="inline-row"><label>显示秒</label><ToggleSwitch v-model="draft.components.clock.seconds" /></div>
+        </template>
+
+        <!-- 日历属性 -->
+        <template v-if="selectedComponent === 'calendar'">
+          <div class="field">
+            <label>周起始日</label>
+            <Select v-model="draft.components.calendar.week_start"
+              :options="[{ label: '周一', value: 1 }, { label: '周日', value: 0 }]"
+              option-label="label" option-value="value" class="w-full" />
           </div>
           <div class="field">
-            <label>角度（{{ draft.background.gradient.angle }}°）</label>
-            <Slider v-model="draft.background.gradient.angle" :min="0" :max="360" />
+            <label>日期格式模板</label>
+            <InputText v-model="draft.components.calendar.format" class="w-full" placeholder="M月D日 dddd" />
+            <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
+          </div>
+          <div class="inline-row"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
+        </template>
+
+        <!-- 农历属性 -->
+        <template v-if="selectedComponent === 'lunar'">
+          <div class="field">
+            <label>格式模板</label>
+            <InputText v-model="draft.components.lunar.format" class="w-full" placeholder="{lunar_month}{lunar_day}" />
+            <small>占位符：{'{lunar_month}'} 月 / {'{lunar_day}'} 日 / {'{ganzhi}'} 干支 / {'{zodiac}'} 生肖</small>
           </div>
         </template>
-        <template v-if="draft.background.type === 'image'">
+
+        <!-- 天气属性 -->
+        <template v-if="selectedComponent === 'weather'">
           <div class="field">
-            <label>图片地址（每行一张，多张轮播）</label>
-            <Textarea v-model="imagesText" rows="4" class="w-full" placeholder="/local/bg1.jpg&#10;/local/bg2.jpg" />
-          </div>
-          <div class="field">
-            <label>轮播间隔（秒）</label>
-            <InputNumber v-model="draft.background.interval_seconds" :min="3" :max="600" show-buttons />
+            <label>天气实体</label>
+            <Select v-model="draft.components.weather.entity" :options="weatherEntities" editable class="w-full" placeholder="weather.home" />
           </div>
         </template>
-        <div class="field">
-          <label>暗化遮罩（{{ Math.round(draft.background.dim * 100) }}%）</label>
-          <Slider v-model="draft.background.dim" :min="0" :max="1" :step="0.05" />
-          <small>在背景上叠加一层黑色遮罩，提升文字可读性</small>
-        </div>
-      </TabPanel>
 
-      <!-- ============ 高级 ============ -->
-      <TabPanel value="advanced">
-        <div class="field">
-          <label>整体显隐表达式（display_template）</label>
-          <Textarea v-model="displayTemplateModel" rows="3" class="w-full code"
-            placeholder="states['binary_sensor.someone_home'].state === 'on'" />
-          <small>
-            JS 表达式，返回 true 显示 / false 隐藏。可用变量：hass、states、user。
-            示例：<code>Number(states['sensor.lux'].state) &lt; 50</code>。表达式出错时默认显示。
-          </small>
-        </div>
-        <div class="field">
-          <label>单组件显隐表达式（JSON，可选）</label>
-          <Textarea v-model="componentTemplatesModel" rows="4" class="w-full code"
-            placeholder='{"clock": "user.is_admin", "weather": "true"}' />
-          <small>键为组件名（clock/calendar/lunar/weather/text_0…），值为 JS 表达式。</small>
-        </div>
-      </TabPanel>
-      </TabPanels>
-    </Tabs>
+        <!-- 文本属性 -->
+        <template v-if="selectedComponent === 'texts'">
+          <TextsForm v-model="draft.components.texts" />
+        </template>
 
-    <!-- 表盘市场模态 -->
+        <!-- 通用：布局编辑 -->
+        <div v-if="selectedComponent !== 'texts'" class="layout-section">
+          <label class="layout-label">布局</label>
+          <div class="layout-inputs">
+            <div class="layout-input">
+              <span>X</span>
+              <InputNumber v-model="currentLayout.x" :min="0" :max="100" suffix="%" />
+            </div>
+            <div class="layout-input">
+              <span>Y</span>
+              <InputNumber v-model="currentLayout.y" :min="0" :max="100" suffix="%" />
+            </div>
+            <div class="layout-input">
+              <span>宽</span>
+              <InputNumber v-model="currentLayout.w" :min="5" :max="100" suffix="%" />
+            </div>
+            <div class="layout-input">
+              <span>高</span>
+              <InputNumber v-model="currentLayout.h" :min="0" :max="100" suffix="%" placeholder="自适应" />
+            </div>
+          </div>
+          <small class="layout-hint">拖拽预览画布中组件右下角的圆形手柄，或调整「宽」，即可等比缩放组件</small>
+        </div>
+
+        <!-- 通用：字体颜色 -->
+        <div v-if="selectedComponent !== 'texts'" class="field">
+          <label>字体颜色（可选）</label>
+          <div class="color-row">
+            <ColorPicker
+              :model-value="currentColor"
+              format="hex"
+              @update:model-value="setCurrentColor(String($event ?? ''))"
+            />
+            <InputText
+              :model-value="currentColor"
+              placeholder="留空用主题色"
+              class="color-input"
+              @update:model-value="setCurrentColor(String($event ?? ''))"
+            />
+            <Button
+              v-if="currentColor"
+              label="清除"
+              size="small"
+              text
+              @click="setCurrentColor('')"
+            />
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 表盘市场模态（弹窗覆盖层） -->
     <FaceMarketplace
       v-if="marketplaceVisible"
       :model-value="draft.components.clock.style"
@@ -722,33 +742,99 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
 </template>
 
 <style scoped>
-.snooze-editor {
-  padding: 8px 4px;
-  max-width: 1200px;
+/* ============ 三区外壳：左工具栏 / 中预览 / 右属性 ============ */
+.design-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 360px;
+  grid-template-rows: minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  overflow: hidden;
 }
-.editor-header h2 {
-  margin: 0 0 4px;
-  font-size: 20px;
+.shell-tools {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--divider-color, #e0e0e0);
 }
-.hint {
-  color: var(--secondary-text-color, #888);
+.tools-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tool-master {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--divider-color, #e0e0e0);
+}
+.tool-master-label {
+  font-weight: 700;
+  font-size: 14px;
+}
+.tool-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--divider-color, #e0e0e0);
+}
+.tool-title {
+  margin: 0 0 10px;
   font-size: 13px;
-  margin: 0 0 12px;
+  font-weight: 700;
+  color: var(--primary-color, #5ea0ff);
 }
+.tool-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--secondary-text-color, #888);
+}
+.shell-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+.shell-props {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--divider-color, #e0e0e0);
+}
+.props-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--divider-color, #e0e0e0);
+}
+.props-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+.props-subject {
+  font-size: 12px;
+  color: var(--primary-color, #5ea0ff);
+}
+.props-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+}
+
+/* ============ 表单通用 ============ */
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 18px;
-}
-.field.inline {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
+  margin-bottom: 16px;
 }
 .field > label {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
 }
 .field small {
   color: var(--secondary-text-color, #888);
@@ -757,32 +843,20 @@ function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 12px;
 }
-.master-switch {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  background: var(--card-background-color, #f5f5f5);
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-fieldset {
-  border: 1px solid var(--divider-color, #e0e0e0);
-  border-radius: 8px;
-  padding: 12px 16px 4px;
-  margin-bottom: 16px;
-}
-legend {
+.inline-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  font-weight: 600;
-  padding: 0 6px;
+  margin-bottom: 12px;
+}
+.inline-row label {
+  font-size: 13px;
 }
 .w-full { width: 100%; }
-.code { font-family: monospace; font-size: 13px; }
+.code { font-family: monospace; font-size: 12.5px; }
 .weekday-chips {
   display: flex;
   gap: 6px;
@@ -799,38 +873,19 @@ legend {
 }
 .device-id-text {
   font-family: monospace;
-  font-size: 14px;
+  font-size: 13px;
   padding: 6px 10px;
   background: var(--card-background-color, #f5f5f5);
   border-radius: 6px;
   user-select: text;
 }
 .save-hint {
-  margin-left: 10px;
+  margin-left: 2px;
   font-size: 13px;
   color: var(--primary-color, #5ea0ff);
 }
 
-/* ---- 设计器布局（左组件列表 + 中预览画布 + 右属性面板） ---- */
-.designer-layout {
-  display: grid;
-  grid-template-columns: 180px 1fr 280px;
-  gap: 16px;
-  margin-bottom: 20px;
-  min-height: 400px;
-}
-.panel-label {
-  display: block;
-  font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 10px;
-  color: var(--secondary-text-color, #888);
-}
-.designer-left {
-  border: 1px solid var(--divider-color, #e0e0e0);
-  border-radius: 8px;
-  padding: 12px;
-}
+/* ============ 组件列表 ============ */
 .component-list {
   display: flex;
   flex-direction: column;
@@ -859,40 +914,14 @@ legend {
   font-size: 14px;
   font-weight: 500;
 }
-.designer-center {
-  border: 1px solid var(--divider-color, #e0e0e0);
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.preview-canvas {
-  position: relative;
-  width: 100%;
-  height: 320px;
-  background: #000;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid var(--divider-color, #2a3346);
-}
-.designer-right {
-  border: 1px solid var(--divider-color, #e0e0e0);
-  border-radius: 8px;
-  padding: 12px;
-  overflow-y: auto;
-  max-height: 500px;
-}
-.props-panel .field {
-  margin-bottom: 14px;
-}
 
-/* ---- 表盘选择器卡片 ---- */
+/* ============ 表盘选择器卡片 ============ */
 .face-selector-card {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px;
+  gap: 12px;
+  padding: 10px;
+  margin-bottom: 12px;
   border: 1px solid var(--divider-color, #e0e0e0);
   border-radius: 10px;
   background: var(--card-background-color, #f5f5f5);
@@ -904,8 +933,8 @@ legend {
   box-shadow: 0 0 0 3px rgba(94, 160, 255, 0.12);
 }
 .face-selector-preview {
-  width: 140px;
-  height: 88px;
+  width: 120px;
+  height: 72px;
   flex: none;
   border-radius: 8px;
   overflow: hidden;
@@ -916,9 +945,10 @@ legend {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 .face-selector-name {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 .face-selector-action {
@@ -926,7 +956,7 @@ legend {
   color: var(--primary-color, #5ea0ff);
 }
 
-/* ---- 布局编辑 ---- */
+/* ============ 布局编辑 ============ */
 .layout-section {
   margin-bottom: 16px;
 }
@@ -939,8 +969,15 @@ legend {
 }
 .layout-inputs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
+}
+.layout-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--secondary-text-color, #888);
 }
 .layout-input {
   display: flex;
@@ -961,7 +998,7 @@ legend {
   font-size: 13px;
 }
 
-/* ---- 颜色选择 ---- */
+/* ============ 颜色选择 ============ */
 .color-row {
   display: flex;
   align-items: center;

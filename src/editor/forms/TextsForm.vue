@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { TextComponent, ComponentLayout } from '@/core/types';
+import { attachHexHash } from '@/core/config';
 import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Button from 'primevue/button';
@@ -49,7 +50,9 @@ function colorModel(row: TextComponent): string {
 }
 
 function setColor(row: TextComponent, v: string): void {
-  row.color = v || undefined;
+  // 同 EditorApp：ColorPicker 输出裸 hex，需补 '#' 否则配置层会丢弃该颜色
+  const s = attachHexHash(String(v ?? '')).trim();
+  row.color = s || undefined;
 }
 </script>
 

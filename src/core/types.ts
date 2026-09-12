@@ -153,14 +153,26 @@ export interface SnoozeConfig {
   theme: 'midnight' | 'paper';
 }
 
-/** 默认布局：各组件的初始位置与尺寸 */
-const DEFAULT_LAYOUTS = {
+/** 默认布局：各组件的初始位置与尺寸（w 同时作为内容缩放的「1x」基准宽度） */
+export const DEFAULT_LAYOUTS = {
   clock: { x: 50, y: 50, w: 60 } as ComponentLayout,
   calendar: { x: 50, y: 85, w: 40 } as ComponentLayout,
   lunar: { x: 50, y: 92, w: 30 } as ComponentLayout,
   weather: { x: 85, y: 10, w: 25 } as ComponentLayout,
   text: { x: 15, y: 10, w: 30 } as ComponentLayout,
 };
+
+/**
+ * 组件内容缩放的「1x」基准宽度（%）。
+ * 布局宽度等于基准宽度时缩放比为 1；布局宽度与基准宽度的比值即为缩放比，
+ * 因此拖动缩放手柄 / 修改宽度即可实时等比放大或缩小组件内容。
+ * @param key 组件键（clock / calendar / lunar / weather / text_N）
+ */
+export function baseWidthFor(key: string): number {
+  if (key.startsWith('text_')) return DEFAULT_LAYOUTS.text.w;
+  const def = (DEFAULT_LAYOUTS as Record<string, ComponentLayout | undefined>)[key];
+  return def ? def.w : 50;
+}
 
 export const DEFAULT_CONFIG: SnoozeConfig = {
   enabled: true,

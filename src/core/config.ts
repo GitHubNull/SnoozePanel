@@ -61,18 +61,30 @@ function normalizeLayout(v: unknown, fallback: ComponentLayout): ComponentLayout
 }
 
 /**
- * 规范化字体颜色。
- * 合法：非空字符串（hex / rgb / rgba / 颜色名），透传。
+ * 补齐 hex 前导 '#'。
+ * PrimeVue ColorPicker（format="hex"）输出形如 `175cd4` 的裸 hex（见其 RGBtoHEX），
+ * 并非合法 CSS 颜色；这里仅对「完整长度」的裸 hex（3/4/6/8 位）补 '#'，
+ * 其余字符串原样返回，避免打断编辑器逐字符输入。
+ */
+export function attachHexHash(v: string): string {
+  const s = v.trim();
+  return /^(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s) ? `#${s}` : v;
+}
+
+/**
+ * 规范化字体颜色（配置加载容错）。
+ * 合法：非空字符串（hex / rgb / rgba / 颜色名）透传，裸 hex 自动补 '#'。
  * 非法：回退 undefined（使用主题色）。
  */
 function normalizeColor(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined;
   const s = v.trim();
   if (!s) return undefined;
+  const colored = attachHexHash(s);
   // 简单校验：#hex / rgb( / rgba( / 字母开头颜色名
-  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s)) return s;
-  if (/^rgba?\(/.test(s)) return s;
-  if (/^[a-zA-Z]+$/.test(s)) return s;
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(colored)) return colored;
+  if (/^rgba?\(/.test(colored)) return colored;
+  if (/^[a-zA-Z]+$/.test(colored)) return colored;
   return undefined;
 }
 

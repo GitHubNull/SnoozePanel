@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, inject, onMounted, onBeforeUnmount } from 'vue';
-import type { SnoozeConfig, ComponentLayout } from '@/core/types';
+import { baseWidthFor, type SnoozeConfig, type ComponentLayout } from '@/core/types';
 import { getTheme } from './themes';
 import { evalTemplate } from '@/core/template';
 import type { HassLike } from '@/core/hass';
@@ -20,14 +20,11 @@ const props = withDefaults(
   defineProps<{
     config: SnoozeConfig;
     deviceId: string;
-    /** 是否编辑态（显示拖拽/缩放手柄，供编辑器预览画布用） */
+    /** 是否编辑态（相对定位铺满宿主，显示拖拽/缩放手柄，供编辑器预览画布用） */
     editMode?: boolean;
-    /** 是否内嵌阅览模式（相对定位铺满宿主，不显示拖拽手柄，供 dev 阅览画布用） */
-    previewMode?: boolean;
   }>(),
   {
     editMode: false,
-    previewMode: false,
   },
 );
 
@@ -41,6 +38,17 @@ const now = computed(() => state?.now ?? new Date());
 const hass = computed(() => state?.hass ?? ({ states: {} } as HassLike));
 
 const theme = computed(() => getTheme(props.config.theme));
+
+/**
+ * 表盘生效主题：表盘内部将 theme.text / theme.textSecondary 以行内样式着色
+ * （会覆盖 wrapper 的 color 继承），故这里把自定义字体颜色写回主题，
+ * 使「字体颜色」对表盘（数字 / SVG 指针·刻度）同样生效；未设置时透传原主题。
+ */
+const clockTheme = computed(() => {
+  const c = props.config.components.clock.color;
+  if (!c) return theme.value;
+  return { ...theme.value, text: c, textSecondary: c };
+});
 
 // 按表盘 id 动态解析入口组件（找不到回退默认表盘）
 const faceComponent = computed(() => getFace(props.config.components.clock.style).component);
@@ -130,7 +138,7 @@ const themeVars = computed(() => ({
 </script>
 
 <template>
-  <div v-if="overallVisible" class="snoozepanel" :class="{ 'edit-mode': editMode, 'preview-mode': previewMode }" :style="[backgroundStyle, themeVars]">
+  <div v-if="overallVisible" class="snoozepanel" :class="{ 'edit-mode': editMode }" :style="[backgroundStyle, themeVars]">
     <div class="dim" :style="{ background: `rgba(0,0,0,${config.background.dim})` }"></div>
 
     <!-- 全部组件统一用 ComponentWrapper 渲染（自由布局 + 可选编辑态） -->
@@ -141,6 +149,7 @@ const themeVars = computed(() => ({
       :color="item.color"
       :editable="editMode"
       :comp-key="item.key"
+      :base-width="baseWidthFor(item.key)"
       @update:layout="onLayoutUpdate(item.key, $event)"
     >
       <component
@@ -149,7 +158,7 @@ const themeVars = computed(() => ({
         :now="now"
         :hour24="config.components.clock.hour24"
         :seconds="config.components.clock.seconds"
-        :theme="theme"
+        :theme="clockTheme"
       />
       <CalendarView
         v-else-if="item.key === 'calendar'"
@@ -186,8 +195,7 @@ const themeVars = computed(() => ({
   overflow: hidden;
   transition: opacity 0.4s ease;
 }
-.snoozepanel.edit-mode,
-.snoozepanel.preview-mode {
+.snoozepanel.edit-mode {
   position: relative;
   inset: auto;
   z-index: auto;

@@ -8,10 +8,6 @@
 
 import { createApp, h, reactive, type App } from 'vue';
 import FacePreview from '@/ui/components/FacePreview.vue';
-import ScreensaverApp from '@/ui/ScreensaverApp.vue';
-import type { SnoozeConfig } from '@/core/types';
-import { normalizeConfig } from '@/core/config';
-import type { HassLike } from '@/core/hass';
 
 /** 预览参数（均可选；缺省：深夜主题、显示秒、24 小时制、绘制主题背景） */
 export interface FacePreviewOptions {
@@ -102,58 +98,3 @@ export function mountFacePreview(
   };
 }
 
-/** 完整屏保预览参数 */
-export interface ScreensaverPreviewOptions {
-  /** 设备 id（仅用于屏保右下角标识展示，不影响逻辑） */
-  deviceId?: string;
-}
-
-/** 完整屏保预览句柄：热更新配置 / 彻底卸载 */
-export interface ScreensaverPreviewHandle {
-  /** 用新配置热更新预览（同一挂载实例，不重建） */
-  update(config: SnoozeConfig): void;
-  /** 卸载并移除渲染内容 */
-  destroy(): void;
-}
-
-/**
- * 在指定宿主元素内挂载完整屏保预览（内嵌阅览模式：相对定位铺满宿主，无拖拽手柄）。
- * 供 dev 实测页用作「阅览画布」：随配置草稿热更新，所见即屏保最终效果。
- * @param host  宿主容器（尺寸由调用方 CSS 决定）
- * @param config  初始配置
- * @param hass  HA 实体上下文（提供 now 走内置 1s ticker）
- * @param opts  预览参数
- * @returns 预览句柄（update / destroy）
- */
-export function mountScreensaverPreview(
-  host: HTMLElement,
-  config: SnoozeConfig,
-  hass: HassLike,
-  opts: ScreensaverPreviewOptions = {},
-): ScreensaverPreviewHandle {
-  const deviceId = opts.deviceId ?? 'preview';
-  // 单一响应式状态：now 每秒推进，config 可整体替换（统一走 normalizeConfig，与运行时一致）
-  const state = reactive({ config: normalizeConfig(config), now: new Date(), hass });
-  const timer = setInterval(() => {
-    state.now = new Date();
-  }, 1000);
-
-  const app: App = createApp({
-    setup() {
-      return () => h(ScreensaverApp, { config: state.config, deviceId, previewMode: true });
-    },
-  });
-  // ScreensaverApp 通过 inject('snoozeState') 获取 now / hass
-  app.provide('snoozeState', state);
-  app.mount(host);
-
-  return {
-    update(next: SnoozeConfig): void {
-      state.config = normalizeConfig(next);
-    },
-    destroy(): void {
-      clearInterval(timer);
-      app.unmount();
-    },
-  };
-}
