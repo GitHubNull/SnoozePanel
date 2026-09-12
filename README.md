@@ -123,6 +123,7 @@ mock 页内置 mock hass 对象，可切换主题/表盘/背景（表盘下拉�
 - [架构决策](doc/ARCHITECTURE.md)
 - [已知限制与路线](doc/TODO.md)
 
-## 许可证
+## 许可证与免责声明
 
-MIT
+- [开源协议（MIT）](LICENSE)：本项目在 MIT 协议下开源，可自由使用、修改与分发。
+- [法律免责声明](DISCLAIMER.md)：软件按「原样」提供，使用风险自负，与 Home Assistant 官方无关联。
