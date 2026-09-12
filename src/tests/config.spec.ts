@@ -40,14 +40,63 @@ describe('normalizeConfig 配置规范化', () => {
     expect(normalizeConfig({ theme: 'neon' }).theme).toBe('midnight');
   });
 
-  it('非法 position 回退默认', () => {
+  it('旧版 position 字段被忽略，回退默认 layout', () => {
     const c = normalizeConfig({ components: { clock: { position: 'nowhere' } } });
-    expect(c.components.clock.position).toBe(DEFAULT_CONFIG.components.clock.position);
+    expect(c.components.clock.layout).toEqual(DEFAULT_CONFIG.components.clock.layout);
   });
 
-  it('绝对坐标 position 保留并夹取范围', () => {
-    const c = normalizeConfig({ components: { clock: { position: { x: 50, y: 150 } } } });
-    expect(c.components.clock.position).toEqual({ x: 50, y: 100 });
+  it('layout 各字段夹取 0-100', () => {
+    const c = normalizeConfig({ components: { clock: { layout: { x: -10, y: 150, w: 200, h: 120 } } } });
+    expect(c.components.clock.layout).toEqual({ x: 0, y: 100, w: 100, h: 100 });
+  });
+
+  it('layout 缺省字段回退默认值', () => {
+    const c = normalizeConfig({ components: { clock: { layout: { x: 30 } } } });
+    expect(c.components.clock.layout.x).toBe(30);
+    expect(c.components.clock.layout.y).toBe(DEFAULT_CONFIG.components.clock.layout.y);
+    expect(c.components.clock.layout.w).toBe(DEFAULT_CONFIG.components.clock.layout.w);
+  });
+
+  it('layout 非对象回退默认', () => {
+    const c = normalizeConfig({ components: { clock: { layout: 'center' } } });
+    expect(c.components.clock.layout).toEqual(DEFAULT_CONFIG.components.clock.layout);
+  });
+
+  it('layout h 为可选字段，缺省不输出 h', () => {
+    const c = normalizeConfig({ components: { clock: { layout: { x: 50, y: 50, w: 60 } } } });
+    expect(c.components.clock.layout.h).toBeUndefined();
+  });
+
+  it('合法 color 透传（hex/rgb/颜色名）', () => {
+    expect(normalizeConfig({ components: { clock: { color: '#ff0000' } } }).components.clock.color).toBe('#ff0000');
+    expect(normalizeConfig({ components: { clock: { color: '#f00' } } }).components.clock.color).toBe('#f00');
+    expect(normalizeConfig({ components: { clock: { color: 'rgb(255,0,0)' } } }).components.clock.color).toBe('rgb(255,0,0)');
+    expect(normalizeConfig({ components: { clock: { color: 'rgba(255,0,0,0.5)' } } }).components.clock.color).toBe('rgba(255,0,0,0.5)');
+    expect(normalizeConfig({ components: { clock: { color: 'red' } } }).components.clock.color).toBe('red');
+  });
+
+  it('非法 color 回退 undefined', () => {
+    expect(normalizeConfig({ components: { clock: { color: '' } } }).components.clock.color).toBeUndefined();
+    expect(normalizeConfig({ components: { clock: { color: '  ' } } }).components.clock.color).toBeUndefined();
+    expect(normalizeConfig({ components: { clock: { color: 123 } } }).components.clock.color).toBeUndefined();
+    expect(normalizeConfig({ components: { clock: { color: '#xyz' } } }).components.clock.color).toBeUndefined();
+    expect(normalizeConfig({ components: { clock: { color: 'not a color!' } } }).components.clock.color).toBeUndefined();
+  });
+
+  it('calendar/lunar/weather 同样支持 layout 与 color', () => {
+    const c = normalizeConfig({
+      components: {
+        calendar: { layout: { x: 10, y: 20, w: 30 }, color: '#00ff00' },
+        lunar: { layout: { x: 40, y: 50, w: 20 }, color: 'blue' },
+        weather: { layout: { x: 70, y: 80, w: 15 }, color: 'rgb(1,2,3)' },
+      },
+    });
+    expect(c.components.calendar.layout).toEqual({ x: 10, y: 20, w: 30 });
+    expect(c.components.calendar.color).toBe('#00ff00');
+    expect(c.components.lunar.layout).toEqual({ x: 40, y: 50, w: 20 });
+    expect(c.components.lunar.color).toBe('blue');
+    expect(c.components.weather.layout).toEqual({ x: 70, y: 80, w: 15 });
+    expect(c.components.weather.color).toBe('rgb(1,2,3)');
   });
 
   it('devices 白/黑名单规范化', () => {
@@ -83,11 +132,21 @@ describe('normalizeConfig 配置规范化', () => {
     expect(normalizeConfig({ background: { dim: -1 } }).background.dim).toBe(0);
   });
 
-  it('texts 过滤无 content 项', () => {
+  it('texts 过滤无 content 项，保留 layout 与 color', () => {
     const c = normalizeConfig({
-      components: { texts: [{ content: '你好' }, { position: 'center' }, { content: '{a.b}' }] },
+      components: {
+        texts: [
+          { content: '你好', layout: { x: 10, y: 20, w: 30 }, color: '#ff0000' },
+          { position: 'center' },
+          { content: '{a.b}' },
+        ],
+      },
     });
     expect(c.components.texts).toHaveLength(2);
+    expect(c.components.texts[0].layout).toEqual({ x: 10, y: 20, w: 30 });
+    expect(c.components.texts[0].color).toBe('#ff0000');
+    // 缺省 layout 回退默认
+    expect(c.components.texts[1].layout).toEqual({ x: 15, y: 10, w: 30 });
   });
 
   it('component_templates 仅保留字符串值', () => {

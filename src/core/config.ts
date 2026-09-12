@@ -1,23 +1,19 @@
 /**
  * 配置规范化：把用户 YAML 中的松散配置合并到默认值，做类型容错。
  * 任何非法字段静默回退默认，不抛异常（保证屏保在主循环中稳健）。
+ *
+ * 布局体系：全部组件使用 ComponentLayout（x/y/w/h 百分比），
+ * 旧版 position 字段（九宫格字符串/绝对坐标）一律忽略，回退默认布局。
  */
 
 import {
   DEFAULT_CONFIG,
   type SnoozeConfig,
-  type Position,
-  type GridPosition,
+  type ComponentLayout,
   type DeviceFilter,
   type EntityCondition,
   type Weekday,
 } from './types';
-
-const GRID_POSITIONS: GridPosition[] = [
-  'top_left', 'top_center', 'top_right',
-  'center_left', 'center', 'center_right',
-  'bottom_left', 'bottom_center', 'bottom_right',
-];
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -40,14 +36,44 @@ function strOrNull(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
-function normalizePosition(v: unknown, fallback: Position): Position {
-  if (typeof v === 'string' && GRID_POSITIONS.includes(v as GridPosition)) {
-    return v as GridPosition;
-  }
-  if (isObject(v) && typeof v.x === 'number' && typeof v.y === 'number') {
-    return { x: Math.min(100, Math.max(0, v.x)), y: Math.min(100, Math.max(0, v.y)) };
-  }
-  return fallback;
+/** 夹取数值到 [min, max] */
+function clamp(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v));
+}
+
+/**
+ * 规范化组件布局。
+ * 合法输入：{ x: number, y: number, w: number, h?: number }，各字段夹取 0-100。
+ * 非法输入（含旧版 position 字段）回退 fallback。
+ */
+function normalizeLayout(v: unknown, fallback: ComponentLayout): ComponentLayout {
+  if (!isObject(v)) return { ...fallback };
+  const x = num(v.x, fallback.x);
+  const y = num(v.y, fallback.y);
+  const w = num(v.w, fallback.w);
+  const h = typeof v.h === 'number' ? v.h : fallback.h;
+  return {
+    x: clamp(x, 0, 100),
+    y: clamp(y, 0, 100),
+    w: clamp(w, 0, 100),
+    ...(h !== undefined ? { h: clamp(h, 0, 100) } : {}),
+  };
+}
+
+/**
+ * 规范化字体颜色。
+ * 合法：非空字符串（hex / rgb / rgba / 颜色名），透传。
+ * 非法：回退 undefined（使用主题色）。
+ */
+function normalizeColor(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const s = v.trim();
+  if (!s) return undefined;
+  // 简单校验：#hex / rgb( / rgba( / 字母开头颜色名
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s)) return s;
+  if (/^rgba?\(/.test(s)) return s;
+  if (/^[a-zA-Z]+$/.test(s)) return s;
+  return undefined;
 }
 
 function normalizeDevices(v: unknown): DeviceFilter | null {
@@ -74,6 +100,15 @@ function normalizeEntityConditions(v: unknown): EntityCondition[] | undefined {
   return out.length ? out : undefined;
 }
 
+/** 各组件默认布局（与 DEFAULT_CONFIG 一致，供 normalizeLayout 回退用） */
+const FALLBACK_LAYOUTS = {
+  clock: DEFAULT_CONFIG.components.clock.layout,
+  calendar: DEFAULT_CONFIG.components.calendar.layout,
+  lunar: DEFAULT_CONFIG.components.lunar.layout,
+  weather: DEFAULT_CONFIG.components.weather.layout,
+  text: { x: 15, y: 10, w: 30 } as ComponentLayout,
+};
+
 /**
  * 规范化完整配置。raw 为视图 YAML 中 `snoozepanel:` 段的对象。
  */
@@ -99,7 +134,8 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
         .filter((t): t is Record<string, unknown> => isObject(t) && typeof t.content === 'string')
         .map((t) => ({
           content: t.content as string,
-          position: normalizePosition(t.position, 'bottom_left'),
+          layout: normalizeLayout(t.layout, FALLBACK_LAYOUTS.text),
+          color: normalizeColor(t.color),
         }))
     : [];
 
@@ -145,24 +181,28 @@ export function normalizeConfig(raw: unknown): SnoozeConfig {
         style: typeof clock.style === 'string' && clock.style.trim() ? clock.style.trim() : d.components.clock.style,
         hour24: bool(clock.hour24, d.components.clock.hour24),
         seconds: bool(clock.seconds, d.components.clock.seconds),
-        position: normalizePosition(clock.position, d.components.clock.position),
+        layout: normalizeLayout(clock.layout, FALLBACK_LAYOUTS.clock),
+        color: normalizeColor(clock.color),
       },
       calendar: {
         show: bool(calendar.show, d.components.calendar.show),
         week_start: calendar.week_start === 0 ? 0 : 1,
         show_week_number: bool(calendar.show_week_number, d.components.calendar.show_week_number),
         format: str(calendar.format, d.components.calendar.format),
-        position: normalizePosition(calendar.position, d.components.calendar.position),
+        layout: normalizeLayout(calendar.layout, FALLBACK_LAYOUTS.calendar),
+        color: normalizeColor(calendar.color),
       },
       lunar: {
         show: bool(lunar.show, d.components.lunar.show),
         format: str(lunar.format, d.components.lunar.format),
-        position: normalizePosition(lunar.position, d.components.lunar.position),
+        layout: normalizeLayout(lunar.layout, FALLBACK_LAYOUTS.lunar),
+        color: normalizeColor(lunar.color),
       },
       weather: {
         show: bool(weather.show, d.components.weather.show),
         entity: str(weather.entity, d.components.weather.entity),
-        position: normalizePosition(weather.position, d.components.weather.position),
+        layout: normalizeLayout(weather.layout, FALLBACK_LAYOUTS.weather),
+        color: normalizeColor(weather.color),
       },
       texts,
     },

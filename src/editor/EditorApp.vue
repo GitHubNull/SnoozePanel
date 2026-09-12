@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { reactive, watch, computed, ref, nextTick } from 'vue';
-import type { SnoozeConfig, GridPosition } from '@/core/types';
+import { reactive, watch, computed, ref, nextTick, provide } from 'vue';
+import type { SnoozeConfig, ComponentLayout } from '@/core/types';
 import type { HassLike } from '@/core/hass';
 import { listFaceOptions } from '@/ui/faces/registry';
 import { saveDeviceConfig } from '@/core/store';
 import { resolveDeviceId } from '@/core/device';
 import FacePreview from '@/ui/components/FacePreview.vue';
+import FaceMarketplace from './FaceMarketplace.vue';
 import Toast from 'primevue/toast';
 import { useToast } from 'primevue/usetoast';
 import Tabs from 'primevue/tabs';
@@ -21,8 +22,10 @@ import Slider from 'primevue/slider';
 import Textarea from 'primevue/textarea';
 import Chip from 'primevue/chip';
 import Button from 'primevue/button';
+import ColorPicker from 'primevue/colorpicker';
 import EntityConditionsForm from './forms/EntityConditionsForm.vue';
 import TextsForm from './forms/TextsForm.vue';
+import ScreensaverApp from '@/ui/ScreensaverApp.vue';
 
 const props = defineProps<{
   config: SnoozeConfig;
@@ -35,6 +38,16 @@ const emit = defineEmits<{
 
 // 本地草稿，任何字段变更后整体 emit（深拷贝避免引用污染）
 const draft = reactive<SnoozeConfig>(JSON.parse(JSON.stringify(props.config)) as SnoozeConfig);
+
+// 为预览画布提供 snoozeState（ScreensaverApp 通过 inject 获取）
+const previewState = reactive({
+  now: new Date(),
+  hass: props.hass ?? ({ states: {} } as HassLike),
+});
+provide('snoozeState', previewState);
+
+// 预览画布设备 id（仅用于展示，不影响逻辑）
+const previewDeviceId = resolveDeviceId();
 
 /**
  * 回声防护：HA 侧把 config-changed 的结果回填给 setConfig 时，
@@ -72,34 +85,37 @@ watch(
 );
 
 // ---- 选项 ----
-const POSITIONS: { label: string; value: GridPosition }[] = [
-  { label: '左上', value: 'top_left' },
-  { label: '顶部居中', value: 'top_center' },
-  { label: '右上', value: 'top_right' },
-  { label: '左中', value: 'center_left' },
-  { label: '正中', value: 'center' },
-  { label: '右中', value: 'center_right' },
-  { label: '左下', value: 'bottom_left' },
-  { label: '底部居中', value: 'bottom_center' },
-  { label: '右下', value: 'bottom_right' },
-];
-
 const THEMES = [
   { label: '深夜（深色）', value: 'midnight' },
   { label: '宣纸（浅色）', value: 'paper' },
 ];
 
-// 表盘选项：从注册表动态生成（label 中文名，value 表盘 id，kind 种类），数字在前
-const CLOCK_STYLES = listFaceOptions().map((f) => ({ label: f.label, value: f.id, kind: f.kind }));
+// 表盘选项：从注册表动态生成（label 中文名，value 表盘 id，kind 种类，source 来源）
+const CLOCK_STYLES = listFaceOptions().map((f) => ({
+  label: f.label,
+  value: f.id,
+  kind: f.kind,
+  source: f.source,
+}));
 
-/** 表盘 id → 中文名（下拉收起态展示） */
+/** 表盘 id → 中文名 */
 function faceLabel(id: string): string {
   return CLOCK_STYLES.find((f) => f.value === id)?.label ?? id;
 }
 
-/** 表盘种类中文文案 */
-function faceKindLabel(kind: 'digital' | 'analog'): string {
-  return kind === 'analog' ? '模拟' : '数字';
+// ---- 表盘市场模态 ----
+const marketplaceVisible = ref(false);
+
+function openMarketplace(): void {
+  marketplaceVisible.value = true;
+}
+
+function onMarketplaceClose(): void {
+  marketplaceVisible.value = false;
+}
+
+function onFaceSelected(faceId: string): void {
+  draft.components.clock.style = faceId;
 }
 
 // ---- 保存反馈 Toast ----
@@ -263,6 +279,83 @@ const componentTemplatesModel = computed<string>({
     }
   },
 });
+
+// ---- 设计器状态 ----
+const selectedComponent = ref<string>('clock');
+
+const componentList = computed(() => [
+  { key: 'clock', label: '时钟', show: draft.components.clock.show },
+  { key: 'calendar', label: '日历', show: draft.components.calendar.show },
+  { key: 'lunar', label: '农历', show: draft.components.lunar.show },
+  { key: 'weather', label: '天气', show: draft.components.weather.show },
+  { key: 'texts', label: '自定义文本', show: draft.components.texts.length > 0 },
+]);
+
+/** 当前选中组件的 layout */
+const currentLayout = computed<ComponentLayout>({
+  get: () => {
+    switch (selectedComponent.value) {
+      case 'clock': return draft.components.clock.layout;
+      case 'calendar': return draft.components.calendar.layout;
+      case 'lunar': return draft.components.lunar.layout;
+      case 'weather': return draft.components.weather.layout;
+      default: return draft.components.clock.layout;
+    }
+  },
+  set: (v) => {
+    switch (selectedComponent.value) {
+      case 'clock': draft.components.clock.layout = v; break;
+      case 'calendar': draft.components.calendar.layout = v; break;
+      case 'lunar': draft.components.lunar.layout = v; break;
+      case 'weather': draft.components.weather.layout = v; break;
+    }
+  },
+});
+
+/** 当前选中组件的 color */
+const currentColor = computed<string>({
+  get: () => {
+    switch (selectedComponent.value) {
+      case 'clock': return draft.components.clock.color ?? '';
+      case 'calendar': return draft.components.calendar.color ?? '';
+      case 'lunar': return draft.components.lunar.color ?? '';
+      case 'weather': return draft.components.weather.color ?? '';
+      default: return '';
+    }
+  },
+  set: (v) => {
+    const val = v || undefined;
+    switch (selectedComponent.value) {
+      case 'clock': draft.components.clock.color = val; break;
+      case 'calendar': draft.components.calendar.color = val; break;
+      case 'lunar': draft.components.lunar.color = val; break;
+      case 'weather': draft.components.weather.color = val; break;
+    }
+  },
+});
+
+function setCurrentColor(v: string): void {
+  currentColor.value = v;
+}
+
+// ---- 布局编辑辅助 ----
+/** 更新指定组件的 layout（数字输入直接绑定 draft，此处供预览画布拖拽回写） */
+function updateComponentLayout(compKey: string, layout: ComponentLayout): void {
+  if (compKey === 'clock') {
+    draft.components.clock.layout = layout;
+  } else if (compKey === 'calendar') {
+    draft.components.calendar.layout = layout;
+  } else if (compKey === 'lunar') {
+    draft.components.lunar.layout = layout;
+  } else if (compKey === 'weather') {
+    draft.components.weather.layout = layout;
+  } else if (compKey.startsWith('text_')) {
+    const idx = Number(compKey.slice(5));
+    if (draft.components.texts[idx]) {
+      draft.components.texts[idx].layout = layout;
+    }
+  }
+}
 </script>
 
 <template>
@@ -384,121 +477,163 @@ const componentTemplatesModel = computed<string>({
         </template>
       </TabPanel>
 
-      <!-- ============ 显示组件 ============ -->
+      <!-- ============ 显示组件（设计器布局：左组件列表 + 中预览画布 + 右属性面板） ============ -->
       <TabPanel value="components">
-        <!-- 时钟 -->
-        <fieldset>
-          <legend><ToggleSwitch v-model="draft.components.clock.show" /> 时钟</legend>
-          <template v-if="draft.components.clock.show">
-            <div class="field-row">
-              <div class="field">
-                <label>表盘</label>
-                <!-- 表盘下拉：选项/收起态均内嵌实时迷你预览（FacePreview 缩放舞台） -->
-                <Select
-                  v-model="draft.components.clock.style"
-                  :options="CLOCK_STYLES"
-                  option-label="label"
-                  option-value="value"
-                  panel-class="face-dropdown-panel"
-                  scroll-height="460px"
-                  class="w-full"
-                >
-                  <template #value="slotProps">
-                    <div class="face-cell">
+        <div class="designer-layout">
+          <!-- 左侧：组件列表 -->
+          <div class="designer-left">
+            <label class="panel-label">组件列表</label>
+            <div class="component-list">
+              <div
+                v-for="comp in componentList"
+                :key="comp.key"
+                class="component-item"
+                :class="{ active: selectedComponent === comp.key }"
+                @click="selectedComponent = comp.key"
+              >
+                <ToggleSwitch
+                  :model-value="comp.show"
+                  @update:model-value="comp.show = $event"
+                  @click.stop
+                />
+                <span class="component-name">{{ comp.label }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 中间：预览画布 -->
+          <div class="designer-center">
+            <label class="panel-label">预览画布（拖拽调整位置，拖拽手柄调整尺寸）</label>
+            <div class="preview-canvas">
+              <ScreensaverApp
+                :config="draft"
+                :device-id="previewDeviceId"
+                edit-mode
+                @update:layout="updateComponentLayout"
+              />
+            </div>
+          </div>
+
+          <!-- 右侧：属性面板 -->
+          <div class="designer-right">
+            <label class="panel-label">属性设置</label>
+            <div class="props-panel">
+              <!-- 时钟属性 -->
+              <template v-if="selectedComponent === 'clock'">
+                <div class="field">
+                  <label>表盘</label>
+                  <div class="face-selector-card" @click="openMarketplace">
+                    <div class="face-selector-preview">
                       <FacePreview
-                        class="face-thumb"
-                        :face-id="String(slotProps.value ?? '')"
+                        :face-id="draft.components.clock.style"
                         :theme="draft.theme"
+                        :seconds="draft.components.clock.seconds"
+                        :hour24="draft.components.clock.hour24"
+                        :zoom="1.2"
                       />
-                      <span class="face-cell-label">{{ faceLabel(String(slotProps.value ?? '')) }}</span>
                     </div>
-                  </template>
-                  <template #option="slotProps">
-                    <div class="face-cell">
-                      <FacePreview
-                        class="face-thumb"
-                        :face-id="slotProps.option.value"
-                        :theme="draft.theme"
-                      />
-                      <span class="face-cell-label">{{ slotProps.option.label }}</span>
-                      <span class="face-kind-badge">{{ faceKindLabel(slotProps.option.kind) }}</span>
+                    <div class="face-selector-info">
+                      <span class="face-selector-name">{{ faceLabel(draft.components.clock.style) }}</span>
+                      <span class="face-selector-action">点击更换表盘</span>
                     </div>
-                  </template>
-                </Select>
+                  </div>
+                </div>
+                <div class="field-row">
+                  <div class="field inline"><label>24 小时制</label><ToggleSwitch v-model="draft.components.clock.hour24" /></div>
+                  <div class="field inline"><label>显示秒</label><ToggleSwitch v-model="draft.components.clock.seconds" /></div>
+                </div>
+              </template>
+
+              <!-- 日历属性 -->
+              <template v-if="selectedComponent === 'calendar'">
+                <div class="field-row">
+                  <div class="field">
+                    <label>周起始日</label>
+                    <Select v-model="draft.components.calendar.week_start"
+                      :options="[{label:'周一',value:1},{label:'周日',value:0}]"
+                      option-label="label" option-value="value" class="w-full" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>日期格式模板</label>
+                  <InputText v-model="draft.components.calendar.format" class="w-full" placeholder="M月D日 dddd" />
+                  <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
+                </div>
+                <div class="field inline"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
+              </template>
+
+              <!-- 农历属性 -->
+              <template v-if="selectedComponent === 'lunar'">
+                <div class="field">
+                  <label>格式模板</label>
+                  <InputText v-model="draft.components.lunar.format" class="w-full" placeholder="{lunar_month}{lunar_day}" />
+                  <small>占位符：{'{lunar_month}'} 月 / {'{lunar_day}'} 日 / {'{ganzhi}'} 干支 / {'{zodiac}'} 生肖</small>
+                </div>
+              </template>
+
+              <!-- 天气属性 -->
+              <template v-if="selectedComponent === 'weather'">
+                <div class="field">
+                  <label>天气实体</label>
+                  <Select v-model="draft.components.weather.entity" :options="weatherEntities" editable class="w-full" placeholder="weather.home" />
+                </div>
+              </template>
+
+              <!-- 文本属性 -->
+              <template v-if="selectedComponent === 'texts'">
+                <TextsForm v-model="draft.components.texts" />
+              </template>
+
+              <!-- 通用：布局编辑 -->
+              <div class="layout-section">
+                <label class="layout-label">布局</label>
+                <div class="layout-inputs">
+                  <div class="layout-input">
+                    <span>X</span>
+                    <InputNumber v-model="currentLayout.x" :min="0" :max="100" suffix="%" />
+                  </div>
+                  <div class="layout-input">
+                    <span>Y</span>
+                    <InputNumber v-model="currentLayout.y" :min="0" :max="100" suffix="%" />
+                  </div>
+                  <div class="layout-input">
+                    <span>宽</span>
+                    <InputNumber v-model="currentLayout.w" :min="5" :max="100" suffix="%" />
+                  </div>
+                  <div class="layout-input">
+                    <span>高</span>
+                    <InputNumber v-model="currentLayout.h" :min="0" :max="100" suffix="%" placeholder="自适应" />
+                  </div>
+                </div>
               </div>
+
+              <!-- 通用：字体颜色 -->
               <div class="field">
-                <label>位置</label>
-                <Select v-model="draft.components.clock.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
+                <label>字体颜色（可选）</label>
+                <div class="color-row">
+                  <ColorPicker
+                    :model-value="currentColor"
+                    format="hex"
+                    @update:model-value="setCurrentColor(String($event ?? ''))"
+                  />
+                  <InputText
+                    :model-value="currentColor"
+                    placeholder="留空用主题色"
+                    class="color-input"
+                    @update:model-value="setCurrentColor(String($event ?? ''))"
+                  />
+                  <Button
+                    v-if="currentColor"
+                    label="清除"
+                    size="small"
+                    text
+                    @click="setCurrentColor('')"
+                  />
+                </div>
               </div>
             </div>
-            <div class="field-row">
-              <div class="field inline"><label>24 小时制</label><ToggleSwitch v-model="draft.components.clock.hour24" /></div>
-              <div class="field inline"><label>显示秒</label><ToggleSwitch v-model="draft.components.clock.seconds" /></div>
-            </div>
-          </template>
-        </fieldset>
-
-        <!-- 日历 -->
-        <fieldset>
-          <legend><ToggleSwitch v-model="draft.components.calendar.show" /> 日历</legend>
-          <template v-if="draft.components.calendar.show">
-            <div class="field-row">
-              <div class="field">
-                <label>周起始日</label>
-                <Select v-model="draft.components.calendar.week_start"
-                  :options="[{label:'周一',value:1},{label:'周日',value:0}]"
-                  option-label="label" option-value="value" class="w-full" />
-              </div>
-              <div class="field">
-                <label>位置</label>
-                <Select v-model="draft.components.calendar.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
-              </div>
-            </div>
-            <div class="field">
-              <label>日期格式模板</label>
-              <InputText v-model="draft.components.calendar.format" class="w-full" placeholder="M月D日 dddd" />
-              <small>占位符：YYYY 年 / M 月 / D 日 / dddd 星期</small>
-            </div>
-            <div class="field inline"><label>显示周数</label><ToggleSwitch v-model="draft.components.calendar.show_week_number" /></div>
-          </template>
-        </fieldset>
-
-        <!-- 农历 -->
-        <fieldset>
-          <legend><ToggleSwitch v-model="draft.components.lunar.show" /> 农历</legend>
-          <template v-if="draft.components.lunar.show">
-            <div class="field">
-              <label>格式模板</label>
-              <InputText v-model="draft.components.lunar.format" class="w-full" placeholder="{lunar_month}{lunar_day}" />
-              <small>占位符：{'{lunar_month}'} 月 / {'{lunar_day}'} 日 / {'{ganzhi}'} 干支 / {'{zodiac}'} 生肖</small>
-            </div>
-            <div class="field">
-              <label>位置</label>
-              <Select v-model="draft.components.lunar.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
-            </div>
-          </template>
-        </fieldset>
-
-        <!-- 天气 -->
-        <fieldset>
-          <legend><ToggleSwitch v-model="draft.components.weather.show" /> 天气</legend>
-          <template v-if="draft.components.weather.show">
-            <div class="field">
-              <label>天气实体</label>
-              <Select v-model="draft.components.weather.entity" :options="weatherEntities" editable class="w-full" placeholder="weather.home" />
-            </div>
-            <div class="field">
-              <label>位置</label>
-              <Select v-model="draft.components.weather.position" :options="POSITIONS" option-label="label" option-value="value" class="w-full" />
-            </div>
-          </template>
-        </fieldset>
-
-        <!-- 自定义文本 -->
-        <fieldset>
-          <legend>自定义文本</legend>
-          <TextsForm v-model="draft.components.texts" :positions="POSITIONS" />
-        </fieldset>
+          </div>
+        </div>
 
         <!-- 设备级覆盖（后端持久化） -->
         <fieldset>
@@ -572,13 +707,24 @@ const componentTemplatesModel = computed<string>({
       </TabPanel>
       </TabPanels>
     </Tabs>
+
+    <!-- 表盘市场模态 -->
+    <FaceMarketplace
+      v-if="marketplaceVisible"
+      :model-value="draft.components.clock.style"
+      :theme="draft.theme"
+      :seconds="draft.components.clock.seconds"
+      :hour24="draft.components.clock.hour24"
+      @update:model-value="onFaceSelected"
+      @close="onMarketplaceClose"
+    />
   </div>
 </template>
 
 <style scoped>
 .snooze-editor {
   padding: 8px 4px;
-  max-width: 720px;
+  max-width: 1200px;
 }
 .editor-header h2 {
   margin: 0 0 4px;
@@ -665,51 +811,165 @@ legend {
   color: var(--primary-color, #5ea0ff);
 }
 
-/* ---- 表盘下拉预览单元格（收起态 + 选项行共用） ---- */
-.face-cell {
+/* ---- 设计器布局（左组件列表 + 中预览画布 + 右属性面板） ---- */
+.designer-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr 280px;
+  gap: 16px;
+  margin-bottom: 20px;
+  min-height: 400px;
+}
+.panel-label {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 10px;
+  color: var(--secondary-text-color, #888);
+}
+.designer-left {
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 12px;
+}
+.component-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.component-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.component-item:hover {
+  background: var(--card-background-color, #f5f5f5);
+}
+.component-item.active {
+  background: var(--primary-color, #5ea0ff);
+  color: #fff;
+}
+.component-item.active .p-toggleswitch {
+  filter: brightness(10);
+}
+.component-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+.designer-center {
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.preview-canvas {
+  position: relative;
+  width: 100%;
+  height: 320px;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--divider-color, #2a3346);
+}
+.designer-right {
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-y: auto;
+  max-height: 500px;
+}
+.props-panel .field {
+  margin-bottom: 14px;
+}
+
+/* ---- 表盘选择器卡片 ---- */
+.face-selector-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: 10px;
+  background: var(--card-background-color, #f5f5f5);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.face-selector-card:hover {
+  border-color: var(--primary-color, #5ea0ff);
+  box-shadow: 0 0 0 3px rgba(94, 160, 255, 0.12);
+}
+.face-selector-preview {
+  width: 140px;
+  height: 88px;
+  flex: none;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--divider-color, #e0e0e0);
+  background: #000;
+}
+.face-selector-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.face-selector-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+.face-selector-action {
+  font-size: 12px;
+  color: var(--primary-color, #5ea0ff);
+}
+
+/* ---- 布局编辑 ---- */
+.layout-section {
+  margin-bottom: 16px;
+}
+.layout-label {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: var(--secondary-text-color, #888);
+}
+.layout-inputs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.layout-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.layout-input span {
+  font-size: 12px;
+  color: var(--secondary-text-color, #888);
+  flex: none;
+  min-width: 16px;
+}
+.layout-input :deep(.p-inputnumber) {
+  flex: 1;
+}
+.layout-input :deep(.p-inputnumber-input) {
+  width: 100%;
+  font-size: 13px;
+}
+
+/* ---- 颜色选择 ---- */
+.color-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 56px;
-  width: 100%;
 }
-.face-thumb {
-  width: 96px;
-  height: 54px;
-  flex: none;
-  border-radius: 6px;
-  border: 1px solid var(--divider-color, #e0e0e0);
-}
-.face-cell-label {
+.color-input {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.face-kind-badge {
-  flex: none;
-  font-size: 12px;
-  line-height: 1;
-  padding: 4px 8px;
-  border-radius: 999px;
-  color: var(--primary-color, #5ea0ff);
-  background: color-mix(in srgb, var(--primary-color, #5ea0ff) 14%, transparent);
-}
-</style>
-
-<!--
-  表盘下拉浮层样式（非 scoped）：PrimeVue 浮层会 Teleport 到 body，
-  父组件的 scoped 属性不会作用于浮层，需以 panelClass（face-dropdown-panel）定位。
-  两个关键事实：
-  1. PrimeVue v4 的 Dropdown 实际渲染为 Select 的 DOM——浮层/列表容器/选项的类名
-     为 p-select-overlay / p-select-list-container / p-select-option（不存在 p-dropdown-*），
-     选择器必须用 p-select-*；列表可视高度由组件 scrollHeight 属性控制（内联 max-height，
-     默认 14rem 仅容约 3 行），模板中已设为 460px 以容纳全部 6 行选项（每行约 62px）。
-  2. 类名必须全局唯一：dev 实测页的自定义下拉另有独立样式（position/left/right 等），
-     曾因复用同名类导致浮层被拉伸为近全宽。
--->
-<style>
-.face-dropdown-panel .p-select-option {
-  padding: 4px 10px;
+  font-family: monospace;
+  font-size: 13px;
 }
 </style>

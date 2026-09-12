@@ -3,25 +3,21 @@
  *
  * 配置写在仪表板视图 raw YAML 的 `snoozepanel:` 段。
  * 所有字段均可选，缺省时套用 DEFAULT_CONFIG。
+ *
+ * 布局体系：全部组件使用自由坐标 + 尺寸（ComponentLayout），
+ * 无九宫格/绝对坐标旧类型，无向后兼容代码。
  */
 
-/** 九宫格位置或绝对坐标 */
-export type GridPosition =
-  | 'top_left' | 'top_center' | 'top_right'
-  | 'center_left' | 'center' | 'center_right'
-  | 'bottom_left' | 'bottom_center' | 'bottom_right';
-
-export interface AbsolutePosition {
+/** 组件自由布局（百分比坐标 + 尺寸） */
+export interface ComponentLayout {
   /** 距左百分比 0-100 */
   x: number;
   /** 距顶百分比 0-100 */
   y: number;
-}
-
-export type Position = GridPosition | AbsolutePosition;
-
-export function isAbsolutePosition(p: Position): p is AbsolutePosition {
-  return typeof p === 'object' && p !== null && 'x' in p && 'y' in p;
+  /** 宽度百分比 0-100 */
+  w: number;
+  /** 高度百分比 0-100（可选，缺省内容自适应） */
+  h?: number;
 }
 
 /** 设备白/黑名单 */
@@ -74,7 +70,9 @@ export interface ClockComponent {
   style: string;
   hour24: boolean;
   seconds: boolean;
-  position: Position;
+  layout: ComponentLayout;
+  /** 自定义字体颜色（覆盖主题色，如 "#ff0000" / "rgb(255,0,0)"） */
+  color?: string;
 }
 
 /** 日历组件 */
@@ -85,7 +83,9 @@ export interface CalendarComponent {
   show_week_number: boolean;
   /** 日期格式模板，如 "M月D日 dddd" */
   format: string;
-  position: Position;
+  layout: ComponentLayout;
+  /** 自定义字体颜色 */
+  color?: string;
 }
 
 /** 农历组件 */
@@ -93,20 +93,26 @@ export interface LunarComponent {
   show: boolean;
   /** 格式模板，占位符 {lunar_month}{lunar_day}{ganzhi}{zodiac} */
   format: string;
-  position: Position;
+  layout: ComponentLayout;
+  /** 自定义字体颜色 */
+  color?: string;
 }
 
 /** 天气组件 */
 export interface WeatherComponent {
   show: boolean;
   entity: string;
-  position: Position;
+  layout: ComponentLayout;
+  /** 自定义字体颜色 */
+  color?: string;
 }
 
 /** 自定义文本（支持实体占位符 {entity_id}） */
 export interface TextComponent {
   content: string;
-  position: Position;
+  layout: ComponentLayout;
+  /** 自定义字体颜色 */
+  color?: string;
 }
 
 export interface Components {
@@ -147,6 +153,15 @@ export interface SnoozeConfig {
   theme: 'midnight' | 'paper';
 }
 
+/** 默认布局：各组件的初始位置与尺寸 */
+const DEFAULT_LAYOUTS = {
+  clock: { x: 50, y: 50, w: 60 } as ComponentLayout,
+  calendar: { x: 50, y: 85, w: 40 } as ComponentLayout,
+  lunar: { x: 50, y: 92, w: 30 } as ComponentLayout,
+  weather: { x: 85, y: 10, w: 25 } as ComponentLayout,
+  text: { x: 15, y: 10, w: 30 } as ComponentLayout,
+};
+
 export const DEFAULT_CONFIG: SnoozeConfig = {
   enabled: true,
   devices: null,
@@ -155,10 +170,10 @@ export const DEFAULT_CONFIG: SnoozeConfig = {
   screensaver_entity: null,
   conditions: {},
   components: {
-    clock: { show: true, style: 'digital', hour24: true, seconds: false, position: 'center' },
-    calendar: { show: true, week_start: 1, show_week_number: false, format: 'M月D日 dddd', position: 'bottom_center' },
-    lunar: { show: false, format: '{lunar_month}{lunar_day}', position: 'bottom_center' },
-    weather: { show: false, entity: '', position: 'top_right' },
+    clock: { show: true, style: 'digital', hour24: true, seconds: false, layout: DEFAULT_LAYOUTS.clock },
+    calendar: { show: true, week_start: 1, show_week_number: false, format: 'M月D日 dddd', layout: DEFAULT_LAYOUTS.calendar },
+    lunar: { show: false, format: '{lunar_month}{lunar_day}', layout: DEFAULT_LAYOUTS.lunar },
+    weather: { show: false, entity: '', layout: DEFAULT_LAYOUTS.weather },
     texts: [],
   },
   background: {

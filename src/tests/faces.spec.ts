@@ -33,13 +33,20 @@ describe('表盘注册表', () => {
     expect(hasFace('nope')).toBe(false);
   });
 
-  it('listFaceOptions 输出纯数据摘要（仅 id/label/kind，排序与 listFaces 一致）', () => {
+  it('listFaceOptions 输出纯数据摘要（含 id/label/kind/source，排序与 listFaces 一致）', () => {
     const options = listFaceOptions();
     expect(options.map((o) => o.id)).toEqual(listFaces().map((f) => f.id));
     for (const o of options) {
-      expect(Object.keys(o).sort()).toEqual(['id', 'kind', 'label']);
+      expect(Object.keys(o).sort()).toEqual(['id', 'kind', 'label', 'source']);
       expect(o.label.length).toBeGreaterThan(0);
       expect(['digital', 'analog']).toContain(o.kind);
+      expect(['builtin', 'thirdparty']).toContain(o.source);
+    }
+  });
+
+  it('内置 6 款表盘 source 均为 builtin', () => {
+    for (const f of listFaces()) {
+      expect(f.source).toBe('builtin');
     }
   });
 });

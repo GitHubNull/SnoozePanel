@@ -76,7 +76,7 @@ describe('mergeConfig 配置合并', () => {
     const merged = mergeConfig(DEFAULT_CONFIG, { components: { clock: { style: 'chrono' } } as never });
     expect(merged.components.clock.style).toBe('chrono');
     expect(merged.components.clock.hour24).toBe(DEFAULT_CONFIG.components.clock.hour24);
-    expect(merged.components.clock.position).toBe(DEFAULT_CONFIG.components.clock.position);
+    expect(merged.components.clock.layout).toEqual(DEFAULT_CONFIG.components.clock.layout);
   });
 
   it('background 浅合并', () => {

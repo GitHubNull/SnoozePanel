@@ -113,6 +113,8 @@ export class SnoozeController {
   private activate(): void {
     if (this.active || this.destroyed) return;
     this.active = true;
+    // 进入后同样应用冷却：短暂忽略触摸/指针输入，防误触立即退出（与面板文案一致）
+    this.cooldownUntil = Date.now() + this.config.exit_cooldown_seconds * 1000;
     this.handle = mountScreensaver(this.config, this.hass, this.deviceId);
     // 屏保内时钟 tick
     this.ticker = new Ticker((now) => {

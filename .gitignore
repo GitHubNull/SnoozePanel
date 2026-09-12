@@ -31,5 +31,6 @@ __pycache__/
 *.log
 .idea/
 .vscode/
+.qoder/
 .DS_Store
 Thumbs.db

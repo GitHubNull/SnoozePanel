@@ -4,6 +4,26 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-09-12 16:11:05
+
+### Added
+- 侧边栏导航入口：后端注册 `panel_custom`（`snooze-panel-sidebar`，mdi:sleep 图标），新增 `src/sidebar/` 全页配置界面（`SidebarApp.vue` + `sidebar.ts`）
+- 自由布局系统：`ComponentLayout`（x/y/w/h 百分比）取代旧九宫格定位，新增 `src/runtime/drag.ts` 拖拽/缩放手势封装与 `src/ui/components/ComponentWrapper.vue` 组件包装器
+- 组件自定义字体颜色：组件配置新增 `color` 字段（`normalizeColor` 校验，非法值回退主题色）
+- 沉浸式表盘市场：新增 `src/editor/FaceMarketplace.vue`（全屏模态、来源分类 Tab、卡片实时预览）；表盘注册表新增 `source` 来源标记与 `faces/thirdparty/` 第三方扫描
+- 编辑器三栏布局（组件列表 / 预览画布 / 属性面板），支持画布内拖拽布局编辑与颜色选择
+- dev 实测页内嵌真实编辑器（TestApi 新增 `mountEditor` / `mountScreensaverPreview`），与 HA 环境配置体验一致
+
+### Changed
+- `ScreensaverApp.vue` 统一由 `ComponentWrapper` 渲染（移除九宫格/绝对定位双轨逻辑）
+- 配置 `position` 字段（grid/absolute）被 `layout` 取代；旧配置含 `position` 时忽略并回退默认布局
+- 自定义文本表单支持逐条布局（X/Y/宽）与颜色配置
+
+### Fixed
+- 修复屏保激活后未初始化退出冷却导致首个触摸即退出（激活时立即应用 `exit_cooldown_seconds`）
+- 修复表盘市场 Dialog 无法打开（移除 `visible` watcher 引发的挂载即卸载）
+- `.gitignore` 补充 `.qoder/`（IDE 工作目录）
+
 ## [0.2.0] - 2026-09-12 12:41:08
 
 ### Added

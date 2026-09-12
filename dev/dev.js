@@ -7,6 +7,7 @@
  *     跨 IIFE 边界获取表盘清单与实时预览；
  *   - 触发 / 退出走生产同款 screensaver_entity 通路
  *     （mock input_boolean 置位 + 重新赋值 el.hass → controller.syncFromEntity）；
+ *   - 配置编辑器直接内嵌真实产物（mountEditor），与 HA 环境完全一致；
  *   - 所有操作走 Toast + 分级日志，全局异常（error / unhandledrejection）也纳入日志，
  *     保证「控制台零报错」可自证；
  *   - 本文件由 tsconfig.dev.json（allowJs + checkJs）做类型检查，JSDoc 与 src 侧类型对齐。
@@ -25,6 +26,7 @@
  * @property {string} id
  * @property {string} label
  * @property {'digital' | 'analog'} kind
+ * @property {'builtin' | 'thirdparty'} source
  */
 
 /**
@@ -44,10 +46,37 @@
  */
 
 /**
+ * 完整屏保预览参数（与 src/runtime/preview.ts 的 ScreensaverPreviewOptions 对齐）。
+ * @typedef {Object} ScreensaverPreviewOptions
+ * @property {string} [deviceId]
+ */
+
+/**
+ * 完整屏保预览句柄（与 src/runtime/preview.ts 的 ScreensaverPreviewHandle 对齐）。
+ * @typedef {Object} ScreensaverPreviewHandle
+ * @property {(config: SnoozeConfig) => void} update
+ * @property {() => void} destroy
+ */
+
+/**
+ * SnoozeConfig（与 src/core/types.ts 对齐，dev 页仅作透传）。
+ * @typedef {Record<string, unknown>} SnoozeConfig
+ */
+
+/**
+ * 编辑器挂载句柄（与 src/main.ts 的 EditorHandle 对齐）。
+ * @typedef {Object} EditorHandle
+ * @property {() => SnoozeConfig} getConfig
+ * @property {() => void} destroy
+ */
+
+/**
  * 产物暴露的实测支撑 API（与 src/main.ts 的 SnoozePanelTestApi 对齐）。
  * @typedef {Object} TestApi
  * @property {() => FaceOption[]} listFaces
  * @property {(host: HTMLElement, faceId: string, opts?: FacePreviewOptions) => FacePreviewHandle} mountFacePreview
+ * @property {(host: HTMLElement, config: SnoozeConfig, hass: MockHass, opts?: ScreensaverPreviewOptions) => ScreensaverPreviewHandle} mountScreensaverPreview
+ * @property {(host: HTMLElement, config: SnoozeConfig, hass: MockHass) => EditorHandle} mountEditor
  */
 
 /**
@@ -103,8 +132,6 @@ function $id(id) {
 
 /** 页面元素引用（模块加载时解析一次） */
 const el = {
-  theme: /** @type {HTMLSelectElement} */ ($id('theme')),
-  bgType: /** @type {HTMLSelectElement} */ ($id('bg-type')),
   idleChips: $id('idle-chips'),
   idleCustom: /** @type {HTMLInputElement} */ ($id('idle-custom')),
   btnMount: /** @type {HTMLButtonElement} */ ($id('btn-mount')),
@@ -114,16 +141,11 @@ const el = {
   badgeBundle: $id('badge-bundle'),
   badgeRuntime: $id('badge-runtime'),
   btnReloadBundle: /** @type {HTMLButtonElement} */ ($id('btn-reload-bundle')),
-  faceTrigger: /** @type {HTMLButtonElement} */ ($id('face-trigger')),
-  faceTriggerThumb: $id('face-trigger-thumb'),
-  faceTriggerName: $id('face-trigger-name'),
-  faceTriggerKind: $id('face-trigger-kind'),
-  facePanel: $id('face-panel'),
-  faceBig: $id('face-big'),
   btnEditorToggle: /** @type {HTMLButtonElement} */ ($id('btn-editor-toggle')),
   editorBody: $id('editor-body'),
   editorHost: $id('editor-host'),
   editorDirty: $id('editor-dirty'),
+  previewCanvas: $id('preview-canvas'),
   btnReapply: /** @type {HTMLButtonElement} */ ($id('btn-reapply')),
   btnRefreshDevices: /** @type {HTMLButtonElement} */ ($id('btn-refresh-devices')),
   deviceList: /** @type {HTMLUListElement} */ ($id('device-list')),
@@ -140,31 +162,19 @@ let bundleReady = false;
 /** @type {TestApi | undefined} */
 let api;
 
-/** 表盘清单（来自产物 API） */
-/** @type {FaceOption[]} */
-let faces = [];
-/** 当前选中表盘 id */
-let currentFaceId = '';
-/** 收起态迷你预览句柄 */
-/** @type {FacePreviewHandle | null} */
-let triggerPreview = null;
-/** 大预览句柄 */
-/** @type {FacePreviewHandle | null} */
-let bigPreview = null;
-/** 展开面板中的选项预览（面板关闭即全部销毁） */
-/** @type {{ id: string, handle: FacePreviewHandle }[] } */
-let optionPreviews = [];
-
 /** 当前挂载的 snooze-panel 元素（单例，避免重复挂载泄漏） */
 /** @type {PanelElementLike | null} */
 let panelEl = null;
 /** 挂载时生效的闲置秒数（供倒计时展示，避免与后续 UI 修改混淆） */
 let mountedIdleSeconds = 15;
 
-/** 编辑器元素（惰性创建）/ 未应用草稿 / 脏标记 */
-/** @type {PanelElementLike | null} */
-let editorEl = null;
-/** @type {Record<string, unknown> | null} */
+/** 编辑器句柄（惰性创建）/ 未应用草稿 / 脏标记 */
+/** @type {EditorHandle | null} */
+let editorHandle = null;
+/** 中间「阅览画布」完整屏保预览句柄 */
+/** @type {ScreensaverPreviewHandle | null} */
+let previewHandle = null;
+/** @type {SnoozeConfig | null} */
 let editorDraft = null;
 let editorDirty = false;
 /** @type {number | undefined} */
@@ -371,7 +381,7 @@ function loadBundleScript() {
   });
 }
 
-/** 加载（或重试加载）构建产物并初始化表盘能力。 */
+/** 加载（或重试加载）构建产物并初始化编辑器。 */
 async function loadBundle() {
   setBundleBadge('loading');
   el.btnReloadBundle.hidden = true;
@@ -397,141 +407,7 @@ async function loadBundle() {
   bundleReady = true;
   setBundleBadge('ok');
   log('ok', '构建产物已加载并暴露 SnoozePanelTestApi');
-  initFaces();
   updateActionButtons();
-}
-
-/* ============================ 表盘下拉（实时迷你预览） ============================ */
-
-/** 当前预览参数（与运行时开关对齐：显示秒、24 小时制、绘制主题背景）。 */
-function currentPreviewOptions() {
-  const theme = /** @type {'midnight' | 'paper'} */ (el.theme.value === 'paper' ? 'paper' : 'midnight');
-  return { theme, seconds: true, hour24: true, showBackground: true };
-}
-
-/** 大预览参数：在迷你预览基础上放大 zoom 倍，让表盘在较大容器里清晰可读（边缘裁剪）。 */
-function bigPreviewOptions() {
-  return Object.assign(currentPreviewOptions(), { zoom: 2 });
-}
-
-/** 初始化表盘能力：拉清单、挂迷你/大预览、构建下拉选项行。 */
-function initFaces() {
-  if (!api) return;
-  faces = api.listFaces();
-  if (faces.length === 0) {
-    log('warn', '表盘清单为空（注册表异常）');
-    return;
-  }
-  currentFaceId = faces[0].id;
-  triggerPreview = api.mountFacePreview(el.faceTriggerThumb, currentFaceId, currentPreviewOptions());
-  bigPreview = api.mountFacePreview(el.faceBig, currentFaceId, bigPreviewOptions());
-  buildFacePanelRows();
-  updateFaceTriggerInfo();
-  log('ok', '表盘已就绪（' + faces.length + ' 款）：' + faces.map((f) => f.label).join('、'));
-}
-
-/** 构建下拉选项行（预览在面板展开时惰性挂载，收起即销毁）。 */
-function buildFacePanelRows() {
-  el.facePanel.innerHTML = '';
-  for (const face of faces) {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'face-option';
-    row.setAttribute('role', 'option');
-    row.dataset.face = face.id;
-    const thumb = document.createElement('span');
-    thumb.className = 'face-thumb preview-host';
-    const name = document.createElement('span');
-    name.className = 'face-option-name';
-    name.textContent = face.label;
-    const kind = document.createElement('span');
-    kind.className = 'kind-badge';
-    kind.textContent = face.kind === 'analog' ? '模拟' : '数字';
-    row.append(thumb, name, kind);
-    row.addEventListener('click', () => selectFace(face.id));
-    el.facePanel.appendChild(row);
-  }
-}
-
-/** 展开面板：为每行惰性挂载实时迷你预览。 */
-function openFacePanel() {
-  if (!api || faces.length === 0) return;
-  el.facePanel.hidden = false;
-  el.faceTrigger.setAttribute('aria-expanded', 'true');
-  optionPreviews = [];
-  for (let i = 0; i < faces.length; i++) {
-    const row = el.facePanel.children[i];
-    const thumb = row ? row.querySelector('.face-thumb') : null;
-    if (!(thumb instanceof HTMLElement)) continue;
-    optionPreviews.push({ id: faces[i].id, handle: api.mountFacePreview(thumb, faces[i].id, currentPreviewOptions()) });
-  }
-  document.addEventListener('pointerdown', onOutsidePointerDown, true);
-  document.addEventListener('keydown', onPanelKeydown, true);
-  log('info', '表盘下拉已展开（' + optionPreviews.length + ' 路迷你预览实时渲染）');
-}
-
-/** 收起面板：销毁全部选项预览。 */
-function closeFacePanel() {
-  if (el.facePanel.hidden) return;
-  for (const item of optionPreviews) item.handle.destroy();
-  optionPreviews = [];
-  el.facePanel.hidden = true;
-  el.faceTrigger.setAttribute('aria-expanded', 'false');
-  document.removeEventListener('pointerdown', onOutsidePointerDown, true);
-  document.removeEventListener('keydown', onPanelKeydown, true);
-}
-
-/**
- * 点击面板/触发器外部时收起。
- * @param {PointerEvent} ev
- */
-function onOutsidePointerDown(ev) {
-  const target = ev.target;
-  if (target instanceof Node && (el.facePanel.contains(target) || el.faceTrigger.contains(target))) return;
-  closeFacePanel();
-}
-
-/**
- * Esc 收起并归还焦点。
- * @param {KeyboardEvent} ev
- */
-function onPanelKeydown(ev) {
-  if (ev.key === 'Escape') {
-    closeFacePanel();
-    el.faceTrigger.focus();
-  }
-}
-
-/**
- * 选择表盘：收起态迷你预览 + 大预览即时联动。
- * @param {string} faceId
- */
-function selectFace(faceId) {
-  closeFacePanel();
-  if (faceId === currentFaceId) return;
-  currentFaceId = faceId;
-  const opts = currentPreviewOptions();
-  if (triggerPreview) triggerPreview.update(faceId, opts);
-  if (bigPreview) bigPreview.update(faceId, bigPreviewOptions());
-  updateFaceTriggerInfo();
-  const face = faces.find((f) => f.id === faceId);
-  log('ok', '已选择表盘：' + (face ? face.label : faceId) + '（' + faceId + '）');
-  toast('success', '表盘已切换', '重新应用 / 重新挂载后写入运行时配置。');
-}
-
-/** 刷新收起态信息（名称 + 种类徽标 + 选项选中态）。 */
-function updateFaceTriggerInfo() {
-  const face = faces.find((f) => f.id === currentFaceId);
-  el.faceTriggerName.textContent = face ? face.label : '（未选择）';
-  if (face) {
-    el.faceTriggerKind.textContent = face.kind === 'analog' ? '模拟' : '数字';
-    el.faceTriggerKind.hidden = false;
-  }
-  for (const row of el.facePanel.children) {
-    if (row instanceof HTMLElement) {
-      row.setAttribute('aria-selected', String(row.dataset.face === currentFaceId));
-    }
-  }
 }
 
 /* ============================ 配置构建 ============================ */
@@ -548,32 +424,25 @@ function clampIdle(value) {
 
 /** 组装基础运行时配置（控制面板当前选项 + 固定 screensaver_entity 触发通路）。 */
 function buildBaseConfig() {
-  const theme = el.theme.value === 'paper' ? 'paper' : 'midnight';
   const idleSeconds = clampIdle(Number(el.idleCustom.value));
   return {
     enabled: true,
     idle_seconds: idleSeconds,
     exit_cooldown_seconds: EXIT_COOLDOWN_SECONDS,
-    theme,
+    theme: 'midnight',
     screensaver_entity: SCREENSAVER_ENTITY,
     components: {
-      clock: { show: true, style: currentFaceId || 'digital', hour24: true, seconds: true, position: 'center' },
-      calendar: { show: true, week_start: 1, show_week_number: true, format: 'M月D日 dddd', position: 'bottom_center' },
-      lunar: { show: true, format: '{lunar_month}{lunar_day} {ganzhi}{zodiac}年', position: 'bottom_center' },
-      weather: { show: true, entity: 'weather.home', position: 'top_right' },
-      texts: [{ content: '室温 {sensor.temp}°C', position: 'top_left' }],
+      clock: { show: true, style: 'digital', hour24: true, seconds: true, layout: { x: 50, y: 40, w: 55 } },
+      calendar: { show: true, week_start: 1, show_week_number: true, format: 'M月D日 dddd', layout: { x: 50, y: 72, w: 32 } },
+      lunar: { show: true, format: '{lunar_month}{lunar_day} {ganzhi}{zodiac}年', layout: { x: 50, y: 93, w: 30 } },
+      weather: { show: true, entity: 'weather.home', layout: { x: 82, y: 12, w: 28 } },
+      texts: [{ content: '室温 {sensor.temp}°C', layout: { x: 16, y: 12, w: 30 } }],
     },
-    background: theme === 'paper'
-      ? {
-          type: 'gradient', color: '#f5f1e8',
-          gradient: { from: '#f5f1e8', to: '#e8e0cf', angle: 160 },
-          images: [], interval_seconds: 30, dim: 0,
-        }
-      : {
-          type: el.bgType.value === 'gradient' ? 'gradient' : 'color', color: '#0b1020',
-          gradient: { from: '#0b1020', to: '#1b2a4a', angle: 160 },
-          images: [], interval_seconds: 30, dim: 0.45,
-        },
+    background: {
+      type: 'color', color: '#0b1020',
+      gradient: { from: '#0b1020', to: '#1b2a4a', angle: 160 },
+      images: [], interval_seconds: 30, dim: 0.45,
+    },
   };
 }
 
@@ -713,7 +582,6 @@ function updateActionButtons() {
   el.btnExit.disabled = panelEl === null || !active;
   el.btnUnmount.disabled = panelEl === null;
   el.btnReapply.disabled = !bundleReady;
-  el.faceTrigger.disabled = !bundleReady || faces.length === 0;
 }
 
 /**
@@ -731,9 +599,9 @@ function setBusy(btn, busy) {
   }
 }
 
-/* ============================ 配置编辑器集成 ============================ */
+/* ============================ 配置编辑器集成（内嵌真实产物） ============================ */
 
-/** 切换编辑器折叠态（首次展开时惰性创建元素）。 */
+/** 切换编辑器折叠态（首次展开时惰性创建编辑器）。 */
 function toggleEditor() {
   const willOpen = el.editorBody.hidden;
   el.editorBody.hidden = !willOpen;
@@ -745,37 +613,49 @@ function toggleEditor() {
   }
 }
 
-/** 惰性创建编辑器元素（一次），并监听 config-changed 防抖记录未应用草稿。 */
+/** 惰性创建编辑器（一次），并启动草稿轮询检测变更。 */
 function ensureEditor() {
-  if (editorEl) return;
-  if (!customElements.get('snooze-panel-editor')) {
-    log('error', 'snooze-panel-editor 未注册（产物异常）');
-    toast('error', '编辑器不可用', '产物未注册 snooze-panel-editor 元素。');
+  if (editorHandle) return;
+  if (!api) {
+    log('error', '产物未加载，无法创建编辑器');
+    toast('error', '编辑器不可用', '请先加载构建产物。');
     return;
   }
-  const element = /** @type {PanelElementLike} */ (document.createElement('snooze-panel-editor'));
-  element.hass = mockHass;
-  element.setConfig({ snoozepanel: buildBaseConfig() });
-  element.addEventListener('config-changed', (ev) => {
-    const detail = /** @type {{ config?: { snoozepanel?: Record<string, unknown> } }} */ (
-      /** @type {CustomEvent} */ (ev).detail
-    );
-    const next = detail.config?.snoozepanel;
-    if (!next) return;
-    // 防抖 400ms 记录草稿，避免输入过程中频繁刷日志
-    if (editorDebounceTimer !== undefined) window.clearTimeout(editorDebounceTimer);
-    editorDebounceTimer = window.setTimeout(() => {
-      editorDraft = next;
-      if (!editorDirty) {
-        editorDirty = true;
-        el.editorDirty.hidden = false;
-        log('info', '编辑器草稿已变更（标记「有未应用变更」）');
-      }
-    }, 400);
-  });
-  el.editorHost.appendChild(element);
-  editorEl = element;
-  log('ok', '配置编辑器已创建（内嵌渲染，深色主题）');
+  editorHandle = api.mountEditor(el.editorHost, buildBaseConfig(), mockHass);
+  log('ok', '配置编辑器已创建（内嵌真实产物，与 HA 环境一致）');
+
+  // 轮询检测草稿变更（编辑器内部 emit 防抖 300ms，轮询 500ms 足够及时）
+  window.setInterval(() => {
+    if (!editorHandle) return;
+    const current = editorHandle.getConfig();
+    if (JSON.stringify(current) !== JSON.stringify(editorDraft)) {
+      if (editorDebounceTimer !== undefined) window.clearTimeout(editorDebounceTimer);
+      editorDebounceTimer = window.setTimeout(() => {
+        editorDraft = current;
+        syncPreview(current);
+        if (!editorDirty) {
+          editorDirty = true;
+          el.editorDirty.hidden = false;
+          log('info', '编辑器草稿已变更（标记「有未应用变更」）');
+        }
+      }, 400);
+    }
+  }, 500);
+}
+
+/** 初始化中间「阅览画布」（完整屏保预览，编辑态）。 */
+function initPreview() {
+  if (!api || previewHandle) return;
+  previewHandle = api.mountScreensaverPreview(el.previewCanvas, buildBaseConfig(), mockHass, { deviceId: 'dev-preview' });
+  log('ok', '阅览画布已挂载（完整屏保预览，编辑态）');
+}
+
+/**
+ * 热更新阅览画布配置（随控制面板 / 编辑器草稿变化实时刷新）。
+ * @param {SnoozeConfig} config
+ */
+function syncPreview(config) {
+  if (previewHandle) previewHandle.update(config);
 }
 
 /** 重新应用配置：卸载 + 按最新配置重挂（优先编辑器草稿，其次控制面板）。 */
@@ -784,6 +664,7 @@ function reapplyConfig() {
   const config = useDraft && editorDraft ? editorDraft : buildBaseConfig();
   const ok = mountRuntime(config, true);
   if (!ok) return;
+  syncPreview(config);
   if (useDraft) {
     editorDirty = false;
     editorDraft = null;
@@ -876,15 +757,6 @@ function syncIdleChips() {
   }
 }
 
-/** 主题切换：三处预览联动（运行时需重新挂载生效）。 */
-function handleThemeChange() {
-  const opts = currentPreviewOptions();
-  if (triggerPreview) triggerPreview.update(currentFaceId, opts);
-  if (bigPreview) bigPreview.update(currentFaceId, bigPreviewOptions());
-  for (const item of optionPreviews) item.handle.update(item.id, opts);
-  log('info', '主题切换为 ' + opts.theme + '（预览已联动；运行时需重新挂载生效）');
-}
-
 /** 注册所有事件监听（含全局异常入日志）。 */
 function bindEvents() {
   el.btnMount.addEventListener('click', handleMountClick);
@@ -895,11 +767,6 @@ function bindEvents() {
     setBusy(el.btnReloadBundle, true);
     void loadBundle().finally(() => setBusy(el.btnReloadBundle, false));
   });
-  el.faceTrigger.addEventListener('click', () => {
-    if (el.facePanel.hidden) openFacePanel();
-    else closeFacePanel();
-  });
-  el.theme.addEventListener('change', handleThemeChange);
   bindIdleControls();
   el.btnEditorToggle.addEventListener('click', toggleEditor);
   el.btnReapply.addEventListener('click', reapplyConfig);
@@ -923,13 +790,14 @@ function bindEvents() {
   window.addEventListener('keydown', markInput, true);
 }
 
-/** 启动：初始禁用 → 加载产物 → 初始化表盘与设备列表 → 状态轮询。 */
+/** 启动：初始禁用 → 加载产物 → 初始化设备列表 → 状态轮询。 */
 async function bootstrap() {
   // PrimeVue 深色主题（编辑器内部组件跟随；与实测台整体风格一致）
   document.documentElement.classList.add('snooze-editor-dark');
   updateActionButtons();
   log('info', '本地实测台启动：mock hass + mock 后端已就绪');
   await loadBundle();
+  initPreview();
   await refreshDeviceList();
   window.setInterval(updateRuntimeStatus, 250);
   updateRuntimeStatus();

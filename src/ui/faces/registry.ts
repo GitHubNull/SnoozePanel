@@ -6,6 +6,7 @@
  *   - 入口组件为 faces/<id>/index.vue（必需）；
  *   - 元数据为 faces/<id>/face.meta.ts（可选），导出 { id?, label, kind }；
  *     缺省 id 取目录名，label 取 id，kind 取 'analog'。
+ *   - 第三方表盘放 faces/thirdparty/<id>/，source 自动标记为 'thirdparty'。
  *
  * 新增表盘 = 放入目录即生效，无需改本文件。
  */
@@ -15,6 +16,9 @@ import type { Component } from 'vue';
 /** 表盘大类：数字 / 模拟 */
 export type FaceKind = 'digital' | 'analog';
 
+/** 表盘来源：系统内置 / 第三方安装 */
+export type FaceSource = 'builtin' | 'thirdparty';
+
 /** 表盘元数据 + 入口组件 */
 export interface FaceMeta {
   /** 表盘唯一 id（目录名） */
@@ -23,6 +27,8 @@ export interface FaceMeta {
   label: string;
   /** 数字 / 模拟 */
   kind: FaceKind;
+  /** 来源：builtin（系统内置）/ thirdparty（第三方安装） */
+  source: FaceSource;
   /** 入口组件 */
   component: Component;
 }
@@ -35,18 +41,24 @@ interface FaceMetaModule {
 }
 
 // 构建时收集：eager 同步打包进单文件 IIFE 产物
-const componentModules = import.meta.glob<{ default: Component }>('./*/index.vue', { eager: true });
+// 内置表盘：faces/<id>/index.vue（排除 thirdparty 子目录）
+const builtinModules = import.meta.glob<{ default: Component }>('./*/index.vue', { eager: true });
+// 第三方表盘：faces/thirdparty/<id>/index.vue
+const thirdpartyModules = import.meta.glob<{ default: Component }>('./thirdparty/*/index.vue', { eager: true });
 const metaModules = import.meta.glob<{ default?: FaceMetaModule } & FaceMetaModule>('./*/face.meta.ts', { eager: true });
+const thirdpartyMetaModules = import.meta.glob<{ default?: FaceMetaModule } & FaceMetaModule>('./thirdparty/*/face.meta.ts', { eager: true });
 
-/** 从模块路径提取表盘目录名，如 './chrono/index.vue' -> 'chrono' */
+/** 从模块路径提取表盘目录名，如 './chrono/index.vue' -> 'chrono' 或 './thirdparty/foo/index.vue' -> 'foo' */
 function dirName(path: string): string {
-  const m = /^\.\/([^/]+)\//.exec(path);
+  const m = /^\.\/(?:thirdparty\/)?([^/]+)\//.exec(path);
   return m ? m[1] : path;
 }
 
 function buildRegistry(): Map<string, FaceMeta> {
   const map = new Map<string, FaceMeta>();
-  for (const [path, mod] of Object.entries(componentModules)) {
+
+  // 内置表盘
+  for (const [path, mod] of Object.entries(builtinModules)) {
     const id = dirName(path);
     const metaMod = metaModules[`./${id}/face.meta.ts`];
     const meta: FaceMetaModule = metaMod?.default ?? metaMod ?? {};
@@ -54,9 +66,25 @@ function buildRegistry(): Map<string, FaceMeta> {
       id: meta.id ?? id,
       label: meta.label ?? id,
       kind: meta.kind ?? 'analog',
+      source: 'builtin',
       component: mod.default,
     });
   }
+
+  // 第三方表盘
+  for (const [path, mod] of Object.entries(thirdpartyModules)) {
+    const id = dirName(path);
+    const metaMod = thirdpartyMetaModules[`./thirdparty/${id}/face.meta.ts`];
+    const meta: FaceMetaModule = metaMod?.default ?? metaMod ?? {};
+    map.set(id, {
+      id: meta.id ?? id,
+      label: meta.label ?? id,
+      kind: meta.kind ?? 'analog',
+      source: 'thirdparty',
+      component: mod.default,
+    });
+  }
+
   return map;
 }
 
@@ -92,9 +120,11 @@ export interface FaceOption {
   label: string;
   /** 数字 / 模拟 */
   kind: FaceKind;
+  /** 来源：builtin / thirdparty */
+  source: FaceSource;
 }
 
 /** 列出全部表盘的纯数据摘要（dev 实测页与编辑器下拉选项消费；排序与 listFaces 一致） */
 export function listFaceOptions(): FaceOption[] {
-  return listFaces().map(({ id, label, kind }) => ({ id, label, kind }));
+  return listFaces().map(({ id, label, kind, source }) => ({ id, label, kind, source }));
 }

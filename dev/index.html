@@ -8,6 +8,7 @@
     本地实测台（静态服务器直开，无构建步骤）：
       python -m http.server 8765  →  http://127.0.0.1:8765/dev/
     逻辑全部在 dev/dev.js（// @ts-check + JSDoc，由 tsconfig.dev.json 做类型检查）。
+    配置编辑器直接内嵌真实产物（mountEditor），与 HA 环境完全一致。
   -->
   <style>
     :root {
@@ -37,10 +38,10 @@
       color: var(--text);
       min-height: 100vh;
     }
-    .page { max-width: 1180px; margin: 0 auto; padding: 26px 22px 80px; }
+    .page { max-width: 100%; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* ============ 顶栏 ============ */
-    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
+    /* ============ 顶栏（上） ============ */
+    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 20px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
     .brand h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: 0.3px; }
     .brand h1 .dot { color: var(--accent); }
     .brand p { margin: 0; color: var(--dim); font-size: 13px; }
@@ -58,14 +59,31 @@
     .badge.error { color: var(--error); border-color: rgba(239, 107, 107, 0.4); }
     .badge.accent { color: var(--accent); border-color: rgba(94, 160, 255, 0.4); }
 
-    /* ============ 栅格与卡片 ============ */
-    .grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; }
-    .card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 18px 20px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
-    }
-    .card.wide { grid-column: 1 / -1; }
+    /* ============ 主内容区（中）：左中右布局 ============ */
+    .main-content { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+    .sidebar-left { width: 280px; flex-shrink: 0; border-right: 1px solid var(--border); overflow-y: auto; background: var(--card); }
+    .canvas-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #000; min-width: 0; }
+    .sidebar-right { width: 360px; flex-shrink: 0; border-left: 1px solid var(--border); overflow-y: auto; background: var(--card); }
+
+    /* ============ 底栏（下） ============ */
+    .bottombar { padding: 12px 20px; background: var(--card); border-top: 1px solid var(--border); max-height: 180px; overflow-y: auto; flex-shrink: 0; }
+
+    /* ============ 面板通用样式 ============ */
+    .panel-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .panel-section:last-child { border-bottom: none; }
+    .panel-title { font-size: 14px; font-weight: 600; margin: 0 0 12px; color: var(--text); }
+    .panel-label { padding: 12px 14px; margin: 0; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); font-weight: 600; font-size: 13px; color: var(--dim); }
+    .component-list { padding: 8px; }
+    .component-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.15s; }
+    .component-item:hover { background: rgba(255,255,255,0.05); }
+    .component-item.active { background: var(--accent); color: #fff; }
+    .component-item.active .p-toggleswitch { filter: brightness(10); }
+    .component-name { font-size: 14px; font-weight: 500; }
+    .preview-canvas { flex: 1; position: relative; overflow: hidden; }
+    .props-panel { padding: 12px 14px; }
+
+    /* ============ 卡片与表单 ============ */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22); }
     .card h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; font-size: 15.5px; }
     .card h2::before { content: ''; width: 4px; height: 15px; border-radius: 2px; background: var(--accent); }
     .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
@@ -74,7 +92,6 @@
     .head-actions { display: flex; align-items: center; gap: 10px; }
     .sub-card { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: var(--radius-sm); }
     .sub-card h3 { margin: 0; font-size: 14px; }
-    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
 
     /* ============ 表单控件 ============ */
     .field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px; }
@@ -126,83 +143,11 @@
     .dim { color: var(--dim); font-size: 12.5px; }
     code { font-family: var(--mono); background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
 
-    /* ============ 表盘下拉（实时迷你预览） ============ */
-    .face-select { position: relative; }
-    .face-select-trigger {
-      display: flex; align-items: center; gap: 10px; width: 100%;
-      padding: 8px 12px; font-family: inherit; text-align: left;
-      background: var(--card-2); color: var(--text);
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    .face-select-trigger:hover { border-color: #3a4a63; }
-    .face-select-trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-    .face-select-trigger:disabled { opacity: 0.5; cursor: not-allowed; }
-    .face-select-name { flex: 1; font-size: 14px; }
-    .chevron {
-      width: 8px; height: 8px; flex: none; margin-left: 2px;
-      border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim);
-      transform: rotate(45deg); transition: transform 0.15s;
-    }
-    .face-select-trigger[aria-expanded="true"] .chevron { transform: rotate(-135deg); }
-    .face-select-panel {
-      position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
-      max-height: 340px; overflow: auto; padding: 6px;
-      background: var(--card-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
-      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
-    }
-    .face-option {
-      display: flex; align-items: center; gap: 10px; width: 100%;
-      padding: 6px 8px; border: 0; border-radius: 7px;
-      background: none; color: var(--text); font-family: inherit; font-size: 14px;
-      cursor: pointer; text-align: left;
-    }
-    .face-option:hover { background: rgba(94, 160, 255, 0.10); }
-    .face-option[aria-selected="true"] { background: var(--accent-soft); }
-    .face-option-name { flex: 1; }
-    .kind-badge {
-      flex: none; font-size: 12px; line-height: 1; padding: 4px 9px;
-      border-radius: 999px; color: var(--accent); background: var(--accent-soft);
-    }
-    .face-thumb {
-      width: 96px; height: 54px; flex: none; display: block;
-      border-radius: 6px; overflow: hidden;
-      border: 1px solid var(--border); background: #000;
-    }
-    /* FacePreview 根元素铺满宿主（含大预览） */
-    .preview-host > .face-preview { width: 100%; height: 100%; }
-    /* 大预览：放大容器并加宽卡片，配合 zoom≈2 让表盘清晰可读 */
-    .big-preview {
-      width: 520px; height: 300px; max-width: 100%;
-      border-radius: 10px; overflow: hidden;
-      border: 1px solid var(--border); background: #000;
-    }
-    section.card:has(.big-preview) { grid-column: span 2; }
-
-    /* ============ 编辑器 ============ */
-    .editor-frame {
-      /* 供编辑器内部样式使用的 HA 变量近似值（深色化，避免白底突兀） */
-      --card-background-color: #10141d;
-      --divider-color: #2a3346;
-      --secondary-text-color: #8b95a8;
-      --primary-color: #5ea0ff;
-      background: #10141d; border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 16px 18px;
-      color: var(--text);
-    }
-    .device-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-    .device-list li {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      padding: 6px 10px; font-size: 13px;
-      background: var(--card-2); border: 1px solid var(--border); border-radius: 7px;
-    }
-    .device-list code { color: var(--accent); }
-
     /* ============ 运行日志 ============ */
     .log {
       list-style: none; margin: 0; padding: 10px 12px;
       background: #0a0d13; border: 1px solid var(--border); border-radius: var(--radius-sm);
-      max-height: 260px; overflow: auto;
+      max-height: 120px; overflow: auto;
       font-family: var(--mono); font-size: 12.5px;
       display: flex; flex-direction: column; gap: 3px;
     }
@@ -252,119 +197,86 @@
       </div>
     </header>
 
-    <main class="grid">
-      <!-- ============ 卡片一：屏保运行 ============ -->
-      <section class="card">
-        <h2>屏保运行</h2>
-
-        <div class="field">
-          <label for="theme">主题</label>
-          <select id="theme">
-            <option value="midnight" selected>深夜（深色）</option>
-            <option value="paper">宣纸（浅色）</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="bg-type">背景类型</label>
-          <select id="bg-type">
-            <option value="color" selected>纯色</option>
-            <option value="gradient">渐变</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>闲置触发时长</label>
-          <div class="chips" id="idle-chips">
-            <button type="button" class="chip-btn" data-idle="5">5 秒</button>
-            <button type="button" class="chip-btn active" data-idle="15">15 秒</button>
-            <button type="button" class="chip-btn" data-idle="60">60 秒</button>
-            <button type="button" class="chip-btn" data-idle="180">3 分钟</button>
-          </div>
-          <div class="inline-input">
-            <input type="number" id="idle-custom" min="5" max="3600" step="1" value="15" aria-label="自定义闲置秒数" />
-            <span class="dim">秒（5–3600 自定义）</span>
-          </div>
-        </div>
-
-        <div class="actions">
-          <button type="button" class="btn" id="btn-mount" disabled>挂载运行时</button>
-          <button type="button" class="btn" id="btn-trigger" disabled>触发屏保</button>
-          <button type="button" class="btn ghost" id="btn-exit" disabled>退出屏保</button>
-          <button type="button" class="btn ghost" id="btn-unmount" disabled>卸载运行时</button>
-        </div>
-        <p class="hint">
-          触发/退出走生产同款 <code>screensaver_entity</code> 通路（<code>input_boolean.screensaver</code> + 重赋
-          <code>hass</code> → <code>syncFromEntity</code>）。控制面板选项在「挂载 / 重新应用」时写入运行时配置。
-        </p>
-      </section>
-
-      <!-- ============ 卡片二：表盘 ============ -->
-      <section class="card">
-        <h2>表盘</h2>
-
-        <div class="field">
-          <label>选择表盘（实时预览）</label>
-          <div class="face-select" id="face-select">
-            <button type="button" class="face-select-trigger" id="face-trigger" aria-haspopup="listbox" aria-expanded="false" disabled>
-              <span class="face-thumb preview-host" id="face-trigger-thumb"></span>
-              <span class="face-select-name" id="face-trigger-name">产物加载中…</span>
-              <span class="kind-badge" id="face-trigger-kind" hidden></span>
-              <span class="chevron" aria-hidden="true"></span>
-            </button>
-            <div class="face-select-panel" id="face-panel" role="listbox" aria-label="表盘列表" hidden></div>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>选中表盘大预览</label>
-          <div class="big-preview preview-host" id="face-big"></div>
-        </div>
-        <p class="hint">
-          预览方案：<code>100vw×100vh</code> 舞台整体缩放（与全屏渲染逐像素一致），随主题联动，新增表盘零适配。
-        </p>
-      </section>
-
-      <!-- ============ 卡片三：配置编辑器 ============ -->
-      <section class="card wide">
-        <div class="card-head">
-          <h2>配置编辑器</h2>
-          <div class="head-actions">
-            <span class="chip warn" id="editor-dirty" hidden>有未应用变更</span>
-            <button type="button" class="btn ghost small" id="btn-editor-toggle" aria-expanded="false" aria-controls="editor-body">展开</button>
-          </div>
-        </div>
-
-        <div id="editor-body" hidden>
-          <div class="editor-frame">
-            <div id="editor-host"></div>
+    <!-- ============ 主内容区（中）：左中右布局 ============ -->
+    <main class="main-content">
+      <!-- 左侧：控制面板 -->
+      <aside class="sidebar-left">
+        <div class="panel-section">
+          <h3 class="panel-title">屏保运行</h3>
+          <div class="field">
+            <label>闲置触发时长</label>
+            <div class="chips" id="idle-chips">
+              <button type="button" class="chip-btn" data-idle="5">5 秒</button>
+              <button type="button" class="chip-btn active" data-idle="15">15 秒</button>
+              <button type="button" class="chip-btn" data-idle="60">60 秒</button>
+              <button type="button" class="chip-btn" data-idle="180">3 分钟</button>
+            </div>
+            <div class="inline-input">
+              <input type="number" id="idle-custom" min="5" max="3600" step="1" value="15" aria-label="自定义闲置秒数" />
+              <span class="dim">秒（5–3600 自定义）</span>
+            </div>
           </div>
           <div class="actions">
-            <button type="button" class="btn" id="btn-reapply" disabled>重新应用配置</button>
-            <span class="dim">「保存为本设备配置」写入 mock 后端；「重新应用」卸载运行时后按最新配置重挂。</span>
+            <button type="button" class="btn" id="btn-mount" disabled>挂载运行时</button>
+            <button type="button" class="btn" id="btn-trigger" disabled>触发屏保</button>
+            <button type="button" class="btn ghost" id="btn-exit" disabled>退出屏保</button>
+            <button type="button" class="btn ghost" id="btn-unmount" disabled>卸载运行时</button>
           </div>
+          <p class="hint">
+            触发/退出走生产同款 <code>screensaver_entity</code> 通路（<code>input_boolean.screensaver</code> + 重赋
+            <code>hass</code> → <code>syncFromEntity</code>）。控制面板选项在「挂载 / 重新应用」时写入运行时配置。
+          </p>
+        </div>
+      </aside>
 
-          <div class="sub-card">
-            <div class="card-head">
-              <h3>mock 后端已保存设备</h3>
-              <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
+      <!-- 中间：预览画布 -->
+      <section class="canvas-center">
+        <div class="panel-label">阅览画布（实时预览屏保效果；拖拽调整位置请在右侧编辑器的显示组件中操作）</div>
+        <div class="preview-canvas" id="preview-canvas">
+          <!-- 屏保预览将挂载到这里 -->
+        </div>
+      </section>
+
+      <!-- 右侧：配置编辑器 -->
+      <aside class="sidebar-right">
+        <div class="panel-section">
+          <div class="card-head">
+            <h3 class="panel-title">配置编辑器</h3>
+            <div class="head-actions">
+              <span class="chip warn" id="editor-dirty" hidden>有未应用变更</span>
+              <button type="button" class="btn ghost small" id="btn-editor-toggle" aria-expanded="false" aria-controls="editor-body">展开</button>
             </div>
-            <ul class="device-list" id="device-list">
-              <li class="dim">尚未保存任何设备</li>
-            </ul>
+          </div>
+          <div id="editor-body" hidden>
+            <div class="editor-frame">
+              <div id="editor-host"></div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn" id="btn-reapply" disabled>重新应用配置</button>
+              <span class="dim">「保存为本设备配置」写入 mock 后端；「重新应用」卸载运行时后按最新配置重挂。</span>
+            </div>
+            <div class="sub-card">
+              <div class="card-head">
+                <h3>mock 后端已保存设备</h3>
+                <button type="button" class="btn ghost small" id="btn-refresh-devices">刷新</button>
+              </div>
+              <ul class="device-list" id="device-list">
+                <li class="dim">尚未保存任何设备</li>
+              </ul>
+            </div>
           </div>
         </div>
-      </section>
-
-      <!-- ============ 卡片四：运行日志 ============ -->
-      <section class="card wide">
-        <div class="card-head">
-          <h2>运行日志</h2>
-          <button type="button" class="btn ghost small" id="btn-clear-log">清空</button>
-        </div>
-        <ul class="log" id="log"></ul>
-      </section>
+      </aside>
     </main>
+
+    <!-- ============ 底栏（下）：运行日志 ============ -->
+    <footer class="bottombar">
+      <div class="card-head">
+        <h3 class="panel-title">运行日志</h3>
+        <button type="button" class="btn ghost small" id="btn-clear-log">清空</button>
+      </div>
+      <ul class="log" id="log"></ul>
+    </footer>
   </div>
 
   <script type="module" src="./dev.js"></script>
