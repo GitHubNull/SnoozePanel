@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="l-title l-desc">
+  <title id="l-title">SnoozePanel 软件图标</title>
+  <desc id="l-desc">宣纸浅色风格的 SnoozePanel 图标：圆形表盘配指针，右上角一枚卧月，圆心一点朱砂。</desc>
+  <defs>
+    <linearGradient id="lpaper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F9F5EC"/>
+      <stop offset="1" stop-color="#EFE6D5"/>
+    </linearGradient>
+    <style>
+      .dial { fill: #FBF8F1; stroke: #2A2A2A; stroke-width: 9; }
+      .ring { fill: none; stroke: #2A2A2A; opacity: 0.12; stroke-width: 2; }
+      .tick { stroke: #7C776B; stroke-width: 5; stroke-linecap: round; }
+      .hand { stroke: #2A2A2A; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <!-- 宣纸底板 -->
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#lpaper)" stroke="#D8CEBB" stroke-width="3"/>
+
+  <!-- 表盘 -->
+  <g transform="translate(128 138)">
+    <circle class="dial" r="78"/>
+    <circle class="ring" r="64"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(30)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(60)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(90)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(120)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(150)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(180)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(210)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(240)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(270)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(300)"/>
+    <line class="tick" x1="0" y1="-78" x2="0" y2="-66" transform="rotate(330)"/>
+    <!-- 指针（10:10） -->
+    <line class="hand" x1="0" y1="0" x2="-34.6" y2="-20" stroke-width="9"/>
+    <line class="hand" x1="0" y1="0" x2="50.2" y2="-29" stroke-width="7"/>
+    <circle r="9" fill="#2A2A2A"/>
+    <circle r="4" fill="#B23A2E"/>
+  </g>
+
+  <!-- 右上角卧月 -->
+  <g transform="translate(200 50) scale(1.7) translate(-12 -12)">
+    <path d="M12 2A10 10 0 0 0 22 12A8 8 0 0 1 12 2Z" fill="#7E93A6"/>
+  </g>
+</svg>

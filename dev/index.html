@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SnoozePanel 本地实测台</title>
-  <!-- 内联空图标：抑制浏览器默认 /favicon.ico 请求，保证控制台零报错 -->
-  <link rel="icon" href="data:," />
+  <!-- 品牌图标：SVG favicon（宣纸浅色风格，仓库根 img/logo.svg；静态服务器根即仓库根） -->
+  <link rel="icon" type="image/svg+xml" href="../img/logo.svg" />
   <!--
     本地实测台（静态服务器直开，无构建步骤）：
       python -m http.server 8765  →  http://127.0.0.1:8765/dev/
@@ -66,6 +66,9 @@
     .topbar.slim .topbar-slim { display: flex; }
     .topbar-slim .topbar-spacer { flex: 1; }
     .brand h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: 0.3px; }
+    /* 标题头品牌图标（与 h1 文字基线对齐） */
+    .brand-logo { height: 26px; width: 26px; vertical-align: -5px; margin-right: 8px; border-radius: 7px; }
+    .topbar-slim .brand-logo { height: 20px; width: 20px; vertical-align: -4px; margin-right: 6px; }
     .brand h1 .dot { color: var(--accent); }
     .brand p { margin: 0; color: var(--dim); font-size: 13px; }
     .topbar-slim .brand h1 { font-size: 16px; margin: 0; }
@@ -192,7 +195,7 @@
     <header class="topbar" id="topbar">
       <div class="topbar-full">
         <div class="brand">
-          <h1>SnoozePanel <span class="dot">本地实测台</span></h1>
+          <h1><img class="brand-logo" src="../img/logo.svg" alt="" />SnoozePanel <span class="dot">本地实测台</span></h1>
           <p>mock hass · 构建产物直载（tmp/dist）· 零外发请求</p>
         </div>
         <div class="topbar-right">
@@ -214,7 +217,7 @@
         </div>
       </div>
       <div class="topbar-slim">
-        <div class="brand"><h1>SnoozePanel <span class="dot">实测台</span></h1></div>
+        <div class="brand"><h1><img class="brand-logo" src="../img/logo.svg" alt="" />SnoozePanel <span class="dot">实测台</span></h1></div>
         <span class="badge" id="badge-runtime-slim">未挂载</span>
         <span class="topbar-spacer"></span>
         <button type="button" class="btn ghost small" id="btn-top-expand" title="展开顶栏">展开顶栏</button>

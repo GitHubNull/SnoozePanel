@@ -1,3 +1,5 @@
+![SnoozePanel 品牌头图](img/banner.png)
+
 # SnoozePanel
 
 > Home Assistant 仪表板屏保插件 —— 平板中控闲置后自动切换全屏屏保，触摸即返回原仪表板，不刷新页面。
@@ -40,9 +42,25 @@
 
 ## 截图
 
-| 深色数字时钟 | 浅色模拟表盘 | 中文配置编辑器 |
+### 本地实测台（克隆后可离线体验）
+
+| 实测台首屏 | 中文配置编辑器 | 表盘市场 |
 |---|---|---|
-| ![数字时钟](img/screensaver-digital-midnight.png) | ![模拟表盘](img/screensaver-analog-paper.png) | ![编辑器](img/editor-gui.png) |
+| ![实测台首屏](img/dev-page.png) | ![配置编辑器](img/dev-editor.png) | ![表盘市场](img/dev-face-marketplace.png) |
+
+一键完成 挂载 → 触发 → 退出 → 卸载，全程有状态徽标与分级运行日志：
+
+![运行时状态与日志](img/dev-runtime-states.png)
+
+### 屏保表盘 × 主题
+
+| 数字时钟 · 深夜 | 机械计时码表 · 深夜 | 轨道同心圆 · 深夜 | 经典模拟表盘 · 宣纸 |
+|---|---|---|---|
+| ![数字时钟·深夜](img/screensaver-digital-midnight.png) | ![机械计时码表·深夜](img/screensaver-chrono.png) | ![轨道同心圆·深夜](img/screensaver-orbit.png) | ![宣纸模拟表盘](img/screensaver-analog-paper.png) |
+
+### HA 侧中文配置编辑器
+
+![HA 侧配置编辑器](img/editor-gui.png)
 
 ## 安装
 
@@ -51,6 +69,8 @@
 1. HACS → 右上角菜单 → Custom repositories → 添加本仓库地址，类型选 `Dashboard`
 2. 安装 SnoozePanel
 3. HA 会自动注册前端资源（若未自动注册，见下方手动方式）
+
+> **侧边栏图标**：本项目注册了品牌自定义图标集（单色），HA 侧边栏以 `snoozepanel:logo` 显示。若目标环境未加载该图标集，可在 [`custom_components/snoozepanel/__init__.py`](custom_components/snoozepanel/__init__.py) 把 `sidebar_icon` 改回任意 `mdi:` 图标。彩色品牌标见 [`img/logo.svg`](img/logo.svg)。
 
 ### 手动资源
 

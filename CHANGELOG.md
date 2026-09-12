@@ -4,6 +4,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-09-12 21:26:33
+
+### Added
+- HA 自定义图标集（`src/runtime/iconset.ts`）：注册 `snoozepanel` 前缀（单色卧月 + 星芒字形），供 HA 侧边栏以 `snoozepanel:logo` 显示品牌图标；由 `main.ts` 在产物加载时注册，纯注册逻辑、无副作用、零外发请求
+- 品牌视觉资产：`img/banner.png` / `img/banner.svg`（README 头图）、`img/logo.svg`（彩色品牌标，dev 页 favicon 与标题使用）
+- README 截图体系重构：本地实测台（首屏 / 编辑器 / 表盘市场 / 运行时状态与日志）+ 屏保表盘 × 主题（数字时钟 / 机械计时码表 / 轨道同心圆 / 宣纸模拟）+ HA 侧配置编辑器
+
+### Changed
+- HA 侧边栏图标由 `mdi:sleep` 改为 `snoozepanel:logo`（`__init__.py` 附回退说明：未加载图标集的环境可改回任意 `mdi:` 图标）
+- dev 实测台品牌化：favicon 由内联空图标改为 `img/logo.svg`，顶栏标题加入品牌 logo（含 slim 态尺寸适配）
+- README 更新：顶部新增品牌头图，重制 dev-page / editor-gui / screensaver-digital-midnight 三图并新增侧边栏图标说明
+
 ## [0.5.0] - 2026-09-12 20:47:25
 
 ### Added

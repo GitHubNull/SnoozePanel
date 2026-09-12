@@ -29,12 +29,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_websocket_commands(hass, storage)
 
     # 注册侧边栏导航入口：点击跳转至 SnoozePanel 配置页
+    # sidebar_icon 使用前端注册的自定义图标集（snoozepanel:logo，见 src/runtime/iconset.ts）；
+    # 若目标 HA 未加载自定义图标集，可回退为原生 mdi 图标，如 sidebar_icon="mdi:power-sleep"。
     await panel_custom.async_register_panel(
         hass,
         webcomponent_name="snooze-panel-sidebar",
         frontend_url_path="snoozepanel",
         sidebar_title="SnoozePanel",
-        sidebar_icon="mdi:sleep",
+        sidebar_icon="snoozepanel:logo",
         module_url="/local/snoozepanel/snoozepanel.js",
         config={"mode": "config"},
     )
