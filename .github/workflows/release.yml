@@ -56,7 +56,7 @@ jobs:
           mkdir -p "$STAGING/frontend"
           cp custom_components/snoozepanel/*.py custom_components/snoozepanel/manifest.json "$STAGING/"
           cp tmp/dist/snoozepanel.js "$STAGING/frontend/snoozepanel.js"
-          (cd "$STAGING" && zip -r ../../../snoozepanel.zip .)
+          (cd "$STAGING" && zip -r ../../snoozepanel.zip .)
           ls -la snoozepanel.zip
 
       - name: 创建 GitHub Release
