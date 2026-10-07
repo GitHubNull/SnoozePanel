@@ -23,6 +23,11 @@ dist/
 *.tsbuildinfo
 .vite/
 
+# ── 集成前端产物（仅由 CI 注入 Release zip，不入库）──────
+# 本地手动部署测试时会临时把 tmp/dist/snoozepanel.js 拷到此处
+# （见 doc/开发维护/人类开发维护教程/03-发布与共建.md）。
+custom_components/snoozepanel/frontend/
+
 # ── Python ──────────────────────────────────────────────
 __pycache__/
 *.py[cod]

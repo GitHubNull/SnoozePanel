@@ -1,13 +1,13 @@
 {
   "domain": "snoozepanel",
   "name": "SnoozePanel",
-  "codeowners": ["@snoozepanel"],
+  "codeowners": ["@GitHubNull"],
   "config_flow": false,
-  "dependencies": [],
-  "documentation": "https://github.com/snoozepanel/snoozepanel",
+  "dependencies": ["frontend", "http", "lovelace", "websocket_api"],
+  "documentation": "https://github.com/GitHubNull/SnoozePanel",
   "integration_type": "service",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/snoozepanel/snoozepanel/issues",
+  "issue_tracker": "https://github.com/GitHubNull/SnoozePanel/issues",
   "requirements": [],
-  "version": "0.11.1"
+  "version": "0.11.2"
 }

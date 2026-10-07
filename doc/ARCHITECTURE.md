@@ -283,3 +283,44 @@
 - 镜像识别依赖标记：新增运行时样式注入通道时，必须在 `styleMirror.ts` 的 `isMirroredStyle` 登记识别依据，否则不会进 shadow。
 - 改 `module_url`（含版本 bump）需**重启 HA** 重新注册面板；lovelace 资源 URL 经 WS `lovelace/resources/update`（键 `resource_id`）更新，前端刷新即生效。
 - shadow root 会阻断外部 `document.querySelector` 直达元素内部：dev/自动化验证需经 shadow 遍历或 `SnoozePanelTestApi`，不得假设 light DOM 选择器可用。
+- **高度链**（v0.11.2 补齐）：`panel_custom` 自定义元素默认 `display:inline` 且无高度，`ha-panel-custom` 只给安全区 padding 不给高度 → 需三层打通：宿主 `display:block` + `calc(100dvh - 安全区)`、shadow 挂载点 `height:100%`、Vue 根全屏 flex，配置页才能铺满剩余空间。
+
+## 决策 18：前端产物自托管 + `add_extra_js_url` 启动早期加载（v0.11.2 侧边栏图标修复）
+
+**结论**：
+- 产物由集成目录自托管：`async_setup` 里 `hass.http.async_register_static_paths([StaticPathConfig("/snoozepanel/snoozepanel.js", <集成目录>/frontend/snoozepanel.js, cache_headers=True)])`（HA 2024.7+ API），URL 带 `?v=<manifest.version>` 查询串破除长缓存。
+- `frontend.add_extra_js_url(hass, js_url)` 让 HA 在启动页 `<head>` 注入该模块脚本——早于侧边栏首渲，保证自定义图标集（`snoozepanel:logo`）在 `ha-icon` 首次渲染前完成注册。
+- `panel_custom` 的 `module_url` 与 extra_js 同 URL（模块按 URL 去重只加载一次）；storage 模式仪表板由 `_async_ensure_lovelace_resource` 自动登记/迁移 Lovelace 资源为同一 URL（YAML 模式跳过）。
+
+**理由（事故复盘）**：
+- 生产现象：侧边栏「SnoozePanel」入口图标永久空白。根因：HA 侧边栏用 `<ha-icon .icon=...>` 渲染，`ha-icon` 仅在**首次渲染时**解析 `window.customIcons/customIconsets`；未命中则置 `_legacy=true` 渲染已废弃的 `<iron-icon>`（空白）且**永不重试**（`_legacy` 只在 mdi 分支复位——sticky 表现已对照 HA 前端源码核实）。
+- 旧机制下产物作为 Lovelace 资源在 lovelace 面板初始化时才加载、作为 `panel_custom` 的 `module_url` 仅在进入面板时加载，均晚于侧边栏首渲 → 图标注册永远迟到。
+- `add_extra_js_url` 是 HA 官方给集成的启动页脚本注入通道（另有 `subscribe_extra_js` 热更兜底），时序确定性最强。
+- 产物迁出 `/local` 的附带收益：摆脱 `/local` 31 天 `cache-control`（决策 17 的缓存痛点改由 `?v=` 查询串 + `cache_headers=True` 可控缓存解决）；HACS zip 分发（`zip_release`）要求 zip 根即集成文件，产物随集成一体分发顺理成章。
+
+**备选方案**：
+- ❌ 保持晚加载、注册图标集后 DOM nudge（改 `ha-icon` 属性逼重渲染）：依赖 HA 内部实现细节，`_legacy` 分支不重读 customIcons，nudge 不可靠。
+- ❌ `sidebar_icon` 回退 mdi 图标：放弃品牌图标，且未根治「产物加载晚」的时序问题。
+- ❌ 继续要求用户手动在 `www/` 放产物 + 手动加资源：31 天缓存与手动迁移成本照旧，HACS 分发也不适用。
+
+**边界**：
+- `hacs.json` 将最低 HA 版本锁定 2024.7（`async_register_static_paths` 引入版本），安装文档同步。
+- 第三方运行时插件通道（`/local/snoozepanel/plugins`）**不随迁出**：那是用户资产通道，保持决策 15 不变。
+
+## 决策 19：PrimeVue 浮层锚点同步捕获 + 双 nextTick 对齐 + `@click.stop`（v0.11.2 菜单闪退修复）
+
+**结论**：`EditorMenuBar.toggleMenuPanel` 在事件派发期间**同步**把 `ev.currentTarget` 存为 `anchor`，再于 `nextTick` 里 `popover.show(ev, anchor)`；`show` 之后再嵌套一层 `nextTick` 才显式 `alignOverlay()`；菜单按钮统一 `@click.stop`。
+
+**理由（事故复盘）**：
+- 生产现象：配置页菜单浮层「一闪而过、无法点击」。根因有两层——
+  1. DOM 规范规定事件派发结束后 `currentTarget` 置 `null`；原先在 `nextTick` 里 `show(ev)`，Popover 的 `target/eventTarget` 均为 null → `onEnter → alignOverlay → absolutePosition(container, null)` 读 `null.offsetHeight` 抛 TypeError（后续监听未绑定）→ 浮层停在 `top:0` 错位显示；而组件初始化时已挂的 document 级 outside-click 监听（`isTargetClicked` 因 `eventTarget=null` 恒 false）在下一次点击立刻关闭它。
+  2. 修复 1 后首次点击仍报 unhandled rejection（`absolutePosition(undefined, ...)` 读 `undefined.style`）：`show()` 置 visible 后 container 需下一轮渲染才挂载，同一 nextTick 内调 `alignOverlay()` 必然踩空；第二层 nextTick 后 container 就绪。切换菜单时 container 已存在、但两面板同尺寸时内容 ResizeObserver 不触发，必须显式按新锚点重对齐——双 nextTick 同时覆盖两种情形。
+- `@click.stop`：阻止菜单按钮点击冒泡到 document 级 outside-click 监听，同时消除 shadow DOM 事件重定向导致的「切换菜单先关后开」闪烁（浮层内容 teleport 到 body 属 light DOM，内部点击不受影响）。
+- 此 bug 与宿主无关（dev 页同样复现），属组件内部时序问题；修复经实测台真实点击验证（五个菜单逐一展开/切换/点选/外部关闭）。
+
+**备选方案**：
+- ❌ 改用 PrimeVue `TieredMenu`/`Menu` 重写菜单栏：改动面大，且根因（锚点捕获时机）在任何浮层组件都存在。
+- ❌ `show(ev)` 后用 `setTimeout` 代替嵌套 nextTick：宏任务时序不保证与 Vue 渲染同步，属于碰运气。
+- ❌ 不加 `@click.stop`、靠 outside-click 的 `isTargetClicked` 排除按钮：shadow 重定向下事件 target 是宿主元素，排除逻辑不可靠。
+
+**边界**：浮层锚点必须同步捕获是一条通用规则——任何「click 事件 → 异步 show」的用法都要先存 `currentTarget`。

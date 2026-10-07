@@ -22,7 +22,17 @@ const vueRecommended =
 
 export default tseslint.config(
   // ---- 忽略目录（构建产物 / 依赖 / 临时目录）----
-  { ignores: ['tmp/**', 'node_modules/**', 'dist/**', 'coverage/**'] },
+  // custom_components/snoozepanel/frontend/ 为 CI 注入 zip 的压缩产物（约 831KB），
+  // 本地手动部署测试时会临时拷入，必须豁免 lint 扫描（Python 文件本就不在 lint 范围）。
+  {
+    ignores: [
+      'tmp/**',
+      'node_modules/**',
+      'dist/**',
+      'coverage/**',
+      'custom_components/snoozepanel/frontend/**',
+    ],
+  },
 
   // ---- 通用 JS 推荐规则 ----
   js.configs.recommended,

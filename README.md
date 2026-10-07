@@ -72,20 +72,26 @@
 
 ## 安装
 
+> 前置：Home Assistant **2024.7** 或更新版本。
+
+SnoozePanel 是一个 **HA 集成**（后端 custom component + 前端产物一体分发）。装完集成后，前端产物托管、Lovelace 资源登记、侧边栏「SnoozePanel」配置入口全部**自动完成**，无需手动添加资源。
+
 ### HACS 自定义仓库（推荐）
 
-1. HACS → 右上角菜单 → Custom repositories → 添加本仓库地址，类型选 `Dashboard`
-2. 安装 SnoozePanel
-3. HA 会自动注册前端资源（若未自动注册，见下方手动方式）
+1. HACS → 右上角 ⋮ → **Custom repositories** → 仓库地址填 `https://github.com/GitHubNull/SnoozePanel`，类型选 **Integration**
+2. 在 HACS 集成列表找到 **SnoozePanel** 并安装
+3. `configuration.yaml` 加入一行 `snoozepanel:` → **重启 Home Assistant**
+
+### 手动安装
+
+1. 在 [Releases](https://github.com/GitHubNull/SnoozePanel/releases) 页下载最新 `snoozepanel.zip`，解压到 HA 配置目录的 `custom_components/snoozepanel/`
+2. `configuration.yaml` 加入一行 `snoozepanel:` → **重启 Home Assistant**
+
+重启后自动就绪：前端产物由集成自托管（`/snoozepanel/snoozepanel.js?v=<版本>`，随 HA 启动页早期加载）、Lovelace 资源自动登记（storage 模式仪表板）、侧边栏出现「SnoozePanel」配置入口。
 
 > **侧边栏图标**：本项目注册了品牌自定义图标集（单色），HA 侧边栏以 `snoozepanel:logo` 显示。若目标环境未加载该图标集，可在 [`custom_components/snoozepanel/__init__.py`](custom_components/snoozepanel/__init__.py) 把 `sidebar_icon` 改回任意 `mdi:` 图标。彩色品牌标见 [`img/logo.svg`](img/logo.svg)。
 
-### 手动资源
-
-1. 下载 [snoozepanel.js](tmp/dist/snoozepanel.js) 放到 HA 的 `www/` 目录（如 `/config/www/snoozepanel.js`）
-2. 设置 → 仪表板 → 右上角 ⋮ → 资源 → 添加资源：
-   - URL：`/local/snoozepanel.js`
-   - 类型：JavaScript 模块
+> **YAML 模式仪表板用户**：`mode: yaml` 的仪表板需手动在仪表盘 YAML 的 `resources:` 中加 `- url: /snoozepanel/snoozepanel.js?v=<版本>\n    type: module`。
 
 ## 快速上手（5 分钟）
 

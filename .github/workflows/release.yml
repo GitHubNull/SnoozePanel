@@ -1,0 +1,65 @@
+# SnoozePanel 发布流水线：tag v* 触发，构建前端产物并打包 HACS 可用的集成 zip。
+#
+# 产出：GitHub Release（标题=tag，notes 自动生成）+ 资产 snoozepanel.zip。
+# zip 结构（HACS zip_release 约定，zip 根直接为集成文件）：
+#   __init__.py / const.py / manifest.json / storage.py / websocket.py
+#   frontend/snoozepanel.js   ← 由本流水线注入（该产物不入库，仅存在于 zip）
+#
+# 版本纪律：tag、package.json、manifest.json 三者必须一致，否则立即失败
+# （历史事故：版本串不一致导致发布返工，此处强制校验）。
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm 版本取自 package.json 的 packageManager 字段
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 版本三处一致性校验（tag == package.json == manifest.json）
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          MAN=$(node -p "require('./custom_components/snoozepanel/manifest.json').version")
+          echo "tag=$TAG package.json=$PKG manifest.json=$MAN"
+          if [ "$TAG" != "$PKG" ] || [ "$TAG" != "$MAN" ]; then
+            echo "::error::版本不一致：tag($TAG) / package.json($PKG) / manifest.json($MAN)"
+            exit 1
+          fi
+
+      - name: 构建前端产物
+        run: pnpm build
+
+      - name: 组装 HACS 集成 zip（zip 根直接为集成文件）
+        run: |
+          set -e
+          STAGING=release-staging/snoozepanel
+          rm -rf release-staging snoozepanel.zip
+          mkdir -p "$STAGING/frontend"
+          cp custom_components/snoozepanel/*.py custom_components/snoozepanel/manifest.json "$STAGING/"
+          cp tmp/dist/snoozepanel.js "$STAGING/frontend/snoozepanel.js"
+          (cd "$STAGING" && zip -r ../../../snoozepanel.zip .)
+          ls -la snoozepanel.zip
+
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" snoozepanel.zip --title "$GITHUB_REF_NAME" --generate-notes

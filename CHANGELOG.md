@@ -4,6 +4,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.2] - 2026-10-07 22:34:33
+
+### Fixed
+- 侧边栏「SnoozePanel」入口图标永久空白：根因是 HA 侧边栏 `<ha-icon>` 仅在首次渲染时解析 `window.customIcons/customIconsets`，未命中即置 `_legacy=true` 渲染已废弃的 `<iron-icon>` 且永不重试；而产物此前作为 Lovelace 资源 / `panel_custom` `module_url` 加载均晚于侧边栏首渲。修复：前端产物改由集成目录自托管（`async_register_static_paths`，HA 2024.7+），并经 `frontend.add_extra_js_url` 随 HA 启动页 `<head>` 早期加载，图标集在侧边栏首渲前确定性注册（`panel_custom` `module_url` 与 extra_js 同 URL 按 URL 去重只加载一次；storage 模式仪表板 Lovelace 资源由集成自动登记/迁移，YAML 模式跳过）
+- 配置页布局收缩为居中小盒：根因是 `SidebarApp.vue` 硬编码 `max-width:1200px` 与固定编辑器高度，且 `panel_custom` 自定义元素默认 `display:inline` 无高度链。修复：`sidebar.ts` 宿主 `display:block` + `calc(100dvh - 安全区)`、shadow 挂载点 `height:100%`；`SidebarApp.vue` 改全屏 flex 布局（`.editor-wrap` `flex:1; min-height:480px`），编辑器铺满剩余空间
+- 配置页菜单浮层「一闪而过、无法点击」：根因是 `EditorMenuBar.toggleMenuPanel` 在 `nextTick` 中 `show(ev)`，此时 `ev.currentTarget` 已按 DOM 规范置 null，PrimeVue Popover 失去定位锚点抛 TypeError，浮层错位停显后随即被 outside-click 关闭。修复：事件派发期间同步捕获锚点 `show(ev, anchor)`；`show` 后嵌套一层 `nextTick` 再显式 `alignOverlay()`（避免 container 未挂载读 `undefined.style` 的 unhandled rejection，并覆盖同尺寸面板切换时 ResizeObserver 不触发的重对齐）；菜单按钮 `@click.stop` 隔离 document 级 outside-click 与 shadow DOM 重定向闪烁
+
+### Added
+- HACS 分发基建：仓库根 `hacs.json`（`zip_release` + `homeassistant: 2024.7.0`）+ `.github/workflows/release.yml`（push tag `v*` 触发：版本三处一致性校验 → `pnpm build` → 组装 `snoozepanel.zip` → 自动创建 Release）
+- `manifest.json` 新增 `dependencies: ["frontend", "http", "lovelace", "websocket_api"]` 保证 setup 时序；`documentation` / `issue_tracker` 指向真实仓库
+
+### Changed
+- 安装方式变更：前端产物随集成一体分发（zip 根即集成文件 + `frontend/snoozepanel.js`），不再要求用户手动放 `www/` 与手动添加 Lovelace 资源；最低 HA 版本提升为 2024.7；`custom_components/snoozepanel/frontend/` 加入 `.gitignore` 与 ESLint 忽略（产物仅由 CI 注入 Release zip，不入库）
+- 文档：安装章重写与故障排除新增三条（01-快速上手、README）、配置页布局与菜单栏说明（02-进阶配置）、ARCHITECTURE 新增决策 18（产物自托管 + 启动早期加载）与决策 19（浮层锚点同步捕获 + 双 nextTick + `@click.stop`）、发布流程改 CI（03-发布与共建）、代理规范常见坑新增三行
+
 ## [0.11.1] - 2026-10-07 21:19:13
 
 ### Fixed

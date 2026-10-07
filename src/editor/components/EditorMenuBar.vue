@@ -58,6 +58,10 @@ const openMenuLabel = computed(() => MENUS.find((m) => m.key === openMenu.value)
 
 /** 打开 / 切换某组菜单浮层（重复点击同一项即关闭） */
 function toggleMenuPanel(key: MenuKey, ev: MouseEvent): void {
+  // 锚点必须在事件派发期间同步捕获：派发结束后 ev.currentTarget 按 DOM 规范
+  // 被置 null，nextTick 里再 show(ev) 会让 Popover 失去定位目标（target=null），
+  // alignOverlay 抛 TypeError 后浮层错位停显、随即被 outside-click 关闭（闪退事故）
+  const anchor = ev.currentTarget as HTMLElement | null;
   if (openMenu.value === key) {
     menuPopover.value?.hide();
     openMenu.value = null;
@@ -65,7 +69,13 @@ function toggleMenuPanel(key: MenuKey, ev: MouseEvent): void {
   }
   openMenu.value = key;
   // 等浮层内容切换完成后再定位，保证按新内容尺寸对齐按钮
-  void nextTick(() => menuPopover.value?.show(ev));
+  void nextTick(() => {
+    menuPopover.value?.show(ev, anchor ?? undefined);
+    // 再等一拍：show 置 visible 后 container 需下一轮渲染才挂载，立即 alignOverlay
+    // 会读 undefined.style 抛 TypeError（unhandled rejection）。切换菜单时 container
+    // 已存在、但两面板同尺寸时 ResizeObserver 不触发，必须显式按新锚点重对齐。
+    void nextTick(() => menuPopover.value?.alignOverlay?.());
+  });
 }
 
 function onMenuHide(): void {
@@ -89,6 +99,8 @@ function onSave(): void {
         <span class="menu-brand-sub">屏保配置</span>
       </div>
       <nav class="menu-nav">
+        <!-- @click.stop：阻止冒泡到 Popover 的 document 级 outside-click 监听，
+             同时避免 shadow DOM 事件重定向导致切换菜单时「先关后开」闪烁 -->
         <Button
           v-for="m in MENUS"
           :key="m.key"
@@ -96,7 +108,7 @@ function onSave(): void {
           size="small"
           text
           :class="{ active: openMenu === m.key }"
-          @click="toggleMenuPanel(m.key, $event)"
+          @click.stop="toggleMenuPanel(m.key, $event)"
         />
       </nav>
       <div class="menu-actions">

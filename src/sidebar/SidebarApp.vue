@@ -109,13 +109,19 @@ async function onSave(): Promise<void> {
 </template>
 
 <style scoped>
+/* 全屏自适应：纵向 flex 撑满宿主（高度链见 sidebar.ts），头部/底栏自然高度，编辑器吃剩余空间 */
 .sidebar-app {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  padding: 16px 20px;
+  box-sizing: border-box;
+  /* 极矮视口兜底：内容超出时页面级滚动 */
+  overflow-y: auto;
 }
 .sidebar-header {
-  margin-bottom: 24px;
+  flex: none;
 }
 .sidebar-header h1 {
   margin: 0 0 8px;
@@ -137,15 +143,14 @@ async function onSave(): Promise<void> {
   border-radius: 12px;
   padding: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  /* 显式高度：插件五区外壳 height:100% 需要确定高度，否则会塔陷到 min-height */
-  height: min(760px, calc(100vh - 240px));
-  min-height: 520px;
+  /* 自适应铺满剩余空间：插件五区外壳 height:100% 需要确定高度；
+     min-height 与 .plugin-shell 的 min-height:460px 匹配，过矮时由 .sidebar-app 滚动兜底 */
+  flex: 1;
+  min-height: 480px;
   overflow: hidden;
 }
 .save-bar {
-  position: sticky;
-  bottom: 20px;
-  margin-top: 24px;
+  flex: none;
   padding: 16px;
   background: var(--sp-chrome-bg, #33373a);
   border-radius: 12px;

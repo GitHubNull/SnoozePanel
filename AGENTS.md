@@ -77,6 +77,10 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   └── README.md           # 使用说明
 ├── scripts/                # 构建辅助脚本（Node ESM）
 │   └── build-plugin.mjs    # 插件包构建脚本（build:plugin / build:plugin:examples）
+├── custom_components/      # HA 后端集成（Python）
+│   └── snoozepanel/        # __init__.py（静态路径自托管产物 + add_extra_js_url 启动早期加载 + Lovelace 资源自动登记 + panel_custom 注册）/ manifest.json（版本单一源）/ const.py / storage.py / websocket.py；frontend/ 产物目录仅由 CI 注入 zip（.gitignore）
+├── hacs.json               # HACS 分发清单（zip_release → snoozepanel.zip，HA ≥ 2024.7）
+├── .github/workflows/      # CI：release.yml（push tag v* → 版本三处一致性校验 → 构建 → 组装 zip → Release）
 ├── doc/                    # 文档（见下方文档体系）
 ├── img/                    # 截图（README 引用）
 ├── tmp/                    # 唯一临时目录：构建产物/验证截图/一次性脚本/垃圾数据/敏感文件（整体 .gitignore）
