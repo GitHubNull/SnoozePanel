@@ -265,7 +265,7 @@
 
 **结论**：
 - **样式镜像**：被 HA 托管进 shadow 树的元素（`snooze-panel-sidebar` / `snooze-panel-editor`）挂载时自建 shadow root（`core/styleMirror.ts` 的 `createStyledShadowHost`），并用 `MutationObserver`（childList + subtree + characterData）把 `document.head` 中需同步的样式**增量镜像**进该 root：本项目打包 CSS 以 `styles/bundle.css` 的 loud 注释标记 `/*! snoozepanel-bundle-css */` 识别（兜底特征规则 `--snooze-bundle`），PrimeVue 运行时样式以 `data-primevue-style-id` 属性识别（组件首渲染懒创建，observer 跟进）；镜像顺序每次同步按 head 顺序重排，源移除时清理镜像，`destroy()` 停止观察并清空。Vue 应用挂载到 shadow root 内的宿主 div（`app.mount(shadowHost.host)`）。
-- **缓存破除**：`panel_custom` 的 `module_url` 追加 `?v=<manifest.version>`（后端 `_frontend_version()` 读 `custom_components/snoozepanel/manifest.json`，单一版本源）；lovelace 资源 URL 同步带同版本串。
+- **缓存破除**：`panel_custom` 的 `module_url` 追加 `?v=<manifest.version>`（后端模块导入期 `_read_manifest_version()` 读 `custom_components/snoozepanel/manifest.json` 并缓存为 `_MANIFEST_VERSION`，单一版本源；模块级读取在 import executor 线程执行，不在事件循环，避免 blocking call 告警——v0.11.3 修复）；lovelace 资源 URL 同步带同版本串。
 
 **理由（事故复盘）**：
 - 生产实测：HA 把 `panel_custom` 元素挂载在 `home-assistant-main` 的 shadow root 内（元素链 home-assistant → shadow → home-assistant-main → shadow → snooze-panel-sidebar），卡片编辑器元素 likewise 落在 HA 弹窗 shadow 树内；而打包 CSS（`vite-plugin-css-injected-by-js` 注入 head）与 PrimeVue 样式（`@primevue/core` useStyle 注入 head）都在 `document.head`，按 CSS Scoping 规范**无法跨 shadow 边界** → 侧边栏配置页/编辑器完全无样式（元素散落、原生控件外观）。dev 实测台挂 light DOM、屏保全屏层挂 `document.body`，故两者均不复现——**dev 通过 ≠ 生产通过**。

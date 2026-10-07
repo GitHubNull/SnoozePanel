@@ -32,13 +32,20 @@ _FRONTEND_DIR = Path(__file__).parent / "frontend"
 _JS_URL_PATH = "/snoozepanel/snoozepanel.js"
 
 
-def _frontend_version() -> str:
+def _read_manifest_version() -> str:
     """读取本集成 manifest.json 的 version，作为前端产物缓存破除串（单一版本源）。"""
     try:
         manifest = json.loads((Path(__file__).parent / "manifest.json").read_text(encoding="utf-8"))
         return str(manifest.get("version", "0"))
     except (OSError, ValueError):  # pragma: no cover - 保底，不应发生
         return "0"
+
+
+# 模块导入期读取一次版本：HA 在 import executor 线程导入 custom integration 模块，
+# 模块级同步 I/O 不在事件循环内执行。若在 async_setup（事件循环）中同步读文件，
+# 会触发 homeassistant.util.loop 的 blocking call 告警（v0.11.2 生产日志已出现），
+# 因此缓存为模块级常量。
+_MANIFEST_VERSION = _read_manifest_version()
 
 
 async def _async_ensure_lovelace_resource(hass: HomeAssistant, url: str) -> None:
@@ -76,7 +83,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN] = storage
     async_register_websocket_commands(hass, storage)
 
-    version = _frontend_version()
+    version = _MANIFEST_VERSION
     js_url = f"{_JS_URL_PATH}?v={version}"
 
     # 静态路径：从集成目录直接服务前端产物（不再依赖 config/www 拷贝）。

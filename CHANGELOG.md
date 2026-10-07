@@ -4,6 +4,11 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.3] - 2026-10-07 23:57:02
+
+### Fixed
+- 消除 HA 事件循环 blocking call 告警：`_frontend_version()` 在 `async_setup`（事件循环）中同步 `read_text` 读取 manifest，触发 `[homeassistant.util.loop]` Detected blocking call 告警（v0.11.2 生产日志两次复现）。修复：版本读取提前到模块导入期——重命名为 `_read_manifest_version()`，读取一次并缓存为模块级常量 `_MANIFEST_VERSION`；HA 在 import executor 线程导入 custom integration 模块，模块级同步 I/O 不在事件循环内执行，不再触发检测。文档 3 处引用同步更新（AGENTS.md / ARCHITECTURE.md 决策 17 / 03-发布与共建）
+
 ## [0.11.2] - 2026-10-07 22:34:33
 
 ### Fixed
