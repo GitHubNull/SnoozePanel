@@ -4,6 +4,11 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.4] - 2026-10-08 00:33:32
+
+### Fixed
+- 侧边栏品牌图标渲染过小、几乎看不清：字形路径实际包围盒为 [12,2]→[22,12]（10×10），而图标集 viewBox 误用 `0 0 24 24`，字形只占画布右上四分之一，侧边栏 24px 格内实测仅渲染 10.4px（fillRatio 0.43）。修复：`src/runtime/iconset.ts` 的 `ICON_VIEW_BOX` 改为字形包围盒外扩 1 单位留白的 `11 1 12 12`，字形占 20/24≈0.83，与 mdi 图标视觉重量一致
+
 ## [0.11.3] - 2026-10-07 23:57:02
 
 ### Fixed

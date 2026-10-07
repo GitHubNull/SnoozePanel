@@ -14,8 +14,13 @@
 /** 图标集前缀（与 __init__.py 中 sidebar_icon 的 `snoozepanel:` 对应） */
 const ICON_SET_PREFIX = 'snoozepanel';
 
-/** 统一 viewBox（方形，符合 HA 图标集要求） */
-const ICON_VIEW_BOX = '0 0 24 24';
+/**
+ * viewBox 取字形实际包围盒 [12,2]→[22,12] 外扩 1 单位留白（12×12 方形）。
+ * 曾误用 '0 0 24 24'：字形只占画布右上四分之一，侧边栏 24px 格内
+ * 实际仅渲染约 10px（fillRatio 0.43），肉眼几乎看不清；改为包围盒后
+ * 字形占 20/24≈0.83，与 mdi 图标视觉重量一致。
+ */
+const ICON_VIEW_BOX = '11 1 12 12';
 
 /** 单色单路径字形：一枚卧月 + 一点星芒，呼应「屏保 / 休眠」意象 */
 const SNOOZE_ICON_PATH =
