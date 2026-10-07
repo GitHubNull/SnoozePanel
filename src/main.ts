@@ -9,6 +9,8 @@
  *  - 暴露 window.SnoozePanelTestApi（本地实测页 / 自动化验证支撑，只读、无副作用）
  */
 
+// 打包 CSS 标记文件：供 core/styleMirror.ts 在 shadow root 内识别本项目样式（须最先引入）
+import './styles/bundle.css';
 import { registerSnoozePanel } from './panel';
 import { registerSnoozePanelEditor } from './editor/editor';
 import { registerSnoozePanelSidebar } from './sidebar/sidebar';

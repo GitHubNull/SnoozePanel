@@ -260,3 +260,26 @@
 - ❌ 后端执行 / 解析插件内容：扩大攻击面，后端只应存储。
 
 **限额（前端与后端同口径）**：单 `.js` ≤ 512 KB；`plugin.json` ≤ 64 KB；单条记录总量 ≤ 1 MB；已安装总数 ≤ 100；`id` 匹配 `^[a-z0-9][a-z0-9-]{0,63}$`；拒绝空 / 含 NUL 内容；`entry` 禁路径穿越。详见 `doc/开发维护/第三方插件开发/04-安装与信任模型.md`。
+
+## 决策 17：Shadow Root 样式镜像 + 版本查询串缓存破除（v0.11.1 生产事故修复）
+
+**结论**：
+- **样式镜像**：被 HA 托管进 shadow 树的元素（`snooze-panel-sidebar` / `snooze-panel-editor`）挂载时自建 shadow root（`core/styleMirror.ts` 的 `createStyledShadowHost`），并用 `MutationObserver`（childList + subtree + characterData）把 `document.head` 中需同步的样式**增量镜像**进该 root：本项目打包 CSS 以 `styles/bundle.css` 的 loud 注释标记 `/*! snoozepanel-bundle-css */` 识别（兜底特征规则 `--snooze-bundle`），PrimeVue 运行时样式以 `data-primevue-style-id` 属性识别（组件首渲染懒创建，observer 跟进）；镜像顺序每次同步按 head 顺序重排，源移除时清理镜像，`destroy()` 停止观察并清空。Vue 应用挂载到 shadow root 内的宿主 div（`app.mount(shadowHost.host)`）。
+- **缓存破除**：`panel_custom` 的 `module_url` 追加 `?v=<manifest.version>`（后端 `_frontend_version()` 读 `custom_components/snoozepanel/manifest.json`，单一版本源）；lovelace 资源 URL 同步带同版本串。
+
+**理由（事故复盘）**：
+- 生产实测：HA 把 `panel_custom` 元素挂载在 `home-assistant-main` 的 shadow root 内（元素链 home-assistant → shadow → home-assistant-main → shadow → snooze-panel-sidebar），卡片编辑器元素 likewise 落在 HA 弹窗 shadow 树内；而打包 CSS（`vite-plugin-css-injected-by-js` 注入 head）与 PrimeVue 样式（`@primevue/core` useStyle 注入 head）都在 `document.head`，按 CSS Scoping 规范**无法跨 shadow 边界** → 侧边栏配置页/编辑器完全无样式（元素散落、原生控件外观）。dev 实测台挂 light DOM、屏保全屏层挂 `document.body`，故两者均不复现——**dev 通过 ≠ 生产通过**。
+- CSS 自定义属性属继承属性、天然跨 shadow 边界，`:root` 变量在 document 侧继续生效，镜像副本无需改写选择器；仅镜像「本项目 + PrimeVue」样式，避免把 HA 自身 head 样式（主题变量等）漏入 shadow 造成污染。
+- `/local` 静态产物 `cache-control: max-age=2678400`（31 天）：发版后浏览器不重新验证、长时间命中旧 JS；且**复用已下发过的版本串**（如 `?v=0.11.0` 曾被 lovelace 资源注册过）仍命中旧缓存——必须 bump 到从未下发过的新版本串（v0.11.1），两处 URL（panel module_url + lovelace 资源）同步。
+
+**备选方案**：
+- ❌ 把 CSS 内联进每个组件的 `<style>` 并依赖 Vue scoped：PrimeVue 运行时样式仍在 head，跨不过 shadow，问题只解决一半。
+- ❌ 用 `::part` / CSS 变量逐处透传：样式面太大（整套编辑器 UI），不可维护。
+- ❌ 镜像 head 全部 style：会把 HA 自身主题变量/全局样式漏入 shadow，污染级联且体积翻倍。
+- ❌ 缓存破除用构建哈希查询串：需前后端额外传递哈希；manifest 版本已是现成单一源，语义清晰（发版即 bump）。
+
+**边界**：
+- 屏保全屏层（`runtime/mount.ts`）挂 `document.body`（light DOM），**不需镜像**；dev 实测台同理。
+- 镜像识别依赖标记：新增运行时样式注入通道时，必须在 `styleMirror.ts` 的 `isMirroredStyle` 登记识别依据，否则不会进 shadow。
+- 改 `module_url`（含版本 bump）需**重启 HA** 重新注册面板；lovelace 资源 URL 经 WS `lovelace/resources/update`（键 `resource_id`）更新，前端刷新即生效。
+- shadow root 会阻断外部 `document.querySelector` 直达元素内部：dev/自动化验证需经 shadow 遍历或 `SnoozePanelTestApi`，不得假设 light DOM 选择器可用。

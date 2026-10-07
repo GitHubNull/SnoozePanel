@@ -1,0 +1,12 @@
+/*! snoozepanel-bundle-css */
+/*
+ * 打包 CSS 标记文件（样式镜像识别锚点）。
+ *
+ * 生产环境中 HA 把 panel_custom / 卡片编辑器元素托管在 shadow root 内，
+ * document.head 的打包 CSS 无法跨 shadow 边界（见 core/styleMirror.ts）。
+ * styleMirror 依赖本文件的 loud 注释标记（/*! 形式，压缩后保留）识别
+ * 本项目的打包 CSS；特征规则 --snooze-bundle 作为标记被裁剪时的兜底识别依据。
+ */
+html {
+  --snooze-bundle: 1;
+}

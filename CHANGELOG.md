@@ -4,6 +4,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.1] - 2026-10-07 21:19:13
+
+### Fixed
+- 侧边栏配置页 / 卡片编辑器在 HA 生产环境完全无样式（元素散落）：根因是 HA 把 `panel_custom`（`snooze-panel-sidebar`）与卡片编辑器元素托管在 `home-assistant-main` 的 shadow root 内，而本项目打包 CSS（`vite-plugin-css-injected-by-js` 注入 `document.head`）与 PrimeVue 运行时样式（`<style data-primevue-style-id>`）都在 `document.head`，按 CSS Scoping 规范跨不过 shadow 边界；dev 实测台挂 light DOM 故不复现，屏保全屏层挂 `document.body` 亦不受影响。新增 `src/core/styleMirror.ts`（`mirrorDocumentStylesInto` / `createStyledShadowHost`：为元素建自有 shadow root，用 `MutationObserver` 把 head 中本项目打包 CSS（loud 注释标记 `snoozepanel-bundle-css` + 兜底特征规则 `--snooze-bundle`）与 PrimeVue 懒加载样式增量镜像进该 root，按 head 顺序重排、卸载时清理）+ 标记文件 `src/styles/bundle.css`；`sidebar.ts` / `editor.ts` 挂载改为 `app.mount(shadowHost.host)`，`disconnectedCallback` 调 `destroy()`
+- 前端产物缓存破除：`panel_custom` 的 `module_url` 追加版本查询串（`?v=<manifest.version>`，版本源自 `manifest.json` 单一口径）。`/local` 静态资源 `cache-control` 为 `max-age` 31 天，此前发版后浏览器长时间命中旧缓存
+
 ## [0.11.0] - 2026-09-13 01:34:39
 
 ### Added

@@ -28,6 +28,7 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   ├── pluginTypes.ts  # 插件安装纯数据契约（Manifest / Record，无 vue/DOM 依赖）
 │   │   ├── pluginLimits.ts # 插件上传限额与校验纯函数（前后端同口径）
 │   │   ├── pluginStore.ts  # 插件安装记录读写封装（hass.callWS 走后端 .storage）
+│   │   ├── styleMirror.ts  # 样式镜像：head 样式镜像进元素自有 shadow root（修 HA shadow 托管样式丢失）
 │   │   └── hass.ts         # HassEntity 等 HA 类型
 │   ├── runtime/            # 运行时层（DOM/定时器/事件）
 │   │   ├── controller.ts   # SnoozeController：激活/退出状态机、闲置计时、冷却
@@ -54,6 +55,8 @@ Home Assistant 仪表板屏保插件：视图 YAML 写 `snoozepanel:` 段即启�
 │   │   ├── useEditorLayout.ts # 编辑器 UI 偏好：面板宽度/收起 + 画布网格/磁吸（localStorage，仅 UI）
 │   │   ├── panels/         # 菜单栏全局配置浮层（Basic / Appearance / Conditions / Device / Advanced）
 │   │   └── forms/          # 复用分区表单（EntityConditionsForm / PropertySchemaForm 元数据驱动属性表单）
+│   ├── sidebar/            # 侧边栏入口元素（panel_custom 协议）：sidebar.ts + SidebarApp.vue（自有 shadow root + 样式镜像）
+│   ├── styles/             # 打包 CSS 标记文件 bundle.css（loud 注释标记，供 styleMirror 识别）
 │   └── tests/              # Vitest 单测（*.spec.ts）
 ├── dev/                    # ★ 本地 mock 实测页（必须入库，供他人测试/核对/验证）
 │   ├── index.html          # 页面结构 + 内联样式（顶栏可收起 / 背板舞台内嵌插件 / 底栏可拖高可收起；内置 mock hass，动态加载 tmp/dist 产物）
@@ -136,6 +139,8 @@ python -m http.server 8765   # 或任意静态服务器
 - **配置持久化必须依赖 HA 后端**：视图级配置随 lovelace 存储持久化；**设备级配置记录（每台平板的独立设置）必须落盘到 HA 后端**（custom component + `.storage/`），严禁仅用浏览器 `localStorage` 承载配置——HA 重启、清缓存、换 App 都会丢。当前 device id 用 localStorage 仅作临时标识，配置持久化后端为 P0 待办（见 `doc/TODO.md`）。
 - **不做的事**：不引入遥测/上报/外发请求；不侵入 HA 现有生产视图与实体。
 - **插件体系（运行时）**：两条扩展路径——（1）**源码目录**（构建期，如 `thirdparty/<id>/`，需 `pnpm build`）；（2）**预编译插件包**（运行时，`<id>/plugin.json` + `index.js`，经市场「安装插件」导入，无需重建宿主）。插件复用宿主全局 `window.SnoozePanelPluginAPI`（含 Vue 运行时与 `registerFace`/`registerWidget`）；仅接受**同源 `/local` 目录与本地 `blob:`** 两通道，**不加载任意外网 URL**。上传限额前后端双重校验（单一常量源 `core/pluginLimits.ts` ↔ 后端 `const.py`）。详见 `doc/ARCHITECTURE.md` 决策 15/16 与 `doc/开发维护/第三方插件开发/`。
+- **Shadow Root 托管与样式镜像（生产事故教训）**：HA 把 `panel_custom` 元素（`snooze-panel-sidebar`）与卡片编辑器元素托管在 `home-assistant-main` 的 **shadow root** 内，`document.head` 的样式（打包 CSS + PrimeVue 运行时样式）按 CSS Scoping 跨不过 shadow 边界 → 生产环境侧边栏/编辑器完全无样式（dev 实测台挂 light DOM 不复现，屏保全屏层挂 `document.body` 亦不受影响）。对策：元素自建 shadow root，`core/styleMirror.ts` 用 MutationObserver 把 head 中本项目打包 CSS（以 `styles/bundle.css` 的 loud 注释标记识别）与 PrimeVue 样式（`data-primevue-style-id` 属性识别）镜像进该 root。详见 `doc/ARCHITECTURE.md` 决策 17。
+- **`/local` 31 天强缓存与版本查询串（发版红线）**：`/local` 静态产物 `cache-control` 为 `max-age` 31 天；`panel_custom` 的 `module_url` 与 lovelace 资源 URL **必须带版本查询串**（版本单一源 = `custom_components/snoozepanel/manifest.json`，后端 `_frontend_version()` 自动读取）。发版必须 bump 到**从未下发过**的版本串（复用旧串如 `?v=0.11.0` 仍命中旧缓存），且 lovelace 资源 URL 同步更新（WS `lovelace/resources/update`，键为 `resource_id`），改 `module_url` 需重启 HA 重新注册面板。
 
 ## 代码规范
 
