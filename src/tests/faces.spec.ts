@@ -12,9 +12,9 @@ function props(): FaceProps {
 }
 
 describe('表盘注册表', () => {
-  it('内置 6 款表盘全部注册', () => {
+  it('内置 9 款表盘全部注册', () => {
     const builtinIds = listFaces().filter((f) => f.source === 'builtin').map((f) => f.id).sort();
-    expect(builtinIds).toEqual(['analog', 'chrono', 'digital', 'minimal', 'orbit', 'ring']);
+    expect(builtinIds).toEqual(['analog', 'chrono', 'digital', 'minimal', 'orbit', 'ring', 'square-art', 'square-classic', 'square-digital']);
   });
 
   it('第三方表盘被自动扫描注册（thirdparty/<id>/）', () => {
@@ -56,9 +56,9 @@ describe('表盘注册表', () => {
     expect(options.some((o) => o.id === 'diver' && o.source === 'thirdparty')).toBe(true);
   });
 
-  it('内置 6 款表盘携带完整元数据（作者/版本/简介/详情/指南/主页/协议）', () => {
+  it('内置 9 款表盘携带完整元数据（作者/版本/简介/详情/指南/主页/协议）', () => {
     const builtins = listFaceOptions().filter((o) => o.source === 'builtin');
-    expect(builtins).toHaveLength(6);
+    expect(builtins).toHaveLength(9);
     for (const o of builtins) {
       expect(o.author).toBeTruthy();
       expect(o.version).toBeTruthy();
