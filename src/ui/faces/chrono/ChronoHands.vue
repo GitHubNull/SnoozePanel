@@ -66,11 +66,10 @@ const minuteLume = lumeLine(72, 18);
       <path :d="minuteLume" :stroke="LUME" stroke-width="1.3" stroke-linecap="round" opacity="0.5" />
       <path :d="minuteHand" fill="none" :stroke="EDGE_LIGHT" stroke-width="0.45" stroke-linejoin="round" opacity="0.45" />
     </g>
-    <!-- 秒针（纤细 + 末端圆点 + 尾部配重） -->
+    <!-- 秒针（纤细 + 末端深红圆点） -->
     <g v-if="seconds" :transform="`rotate(${hands.second} 100 100)`">
       <line x1="100" y1="112" x2="100" y2="24" :stroke="secondColor" stroke-width="1.2" stroke-linecap="round" />
-      <circle cx="100" cy="30" r="2.4" :fill="secondColor" />
-      <circle cx="100" cy="112" r="1.8" :fill="secondColor" />
+      <circle cx="100" cy="30" r="2.4" fill="#8b2020" />
     </g>
     <!-- 中心轴（金质 + 镜面点） -->
     <circle cx="100" cy="100" r="4.5" :fill="roseGold" />
